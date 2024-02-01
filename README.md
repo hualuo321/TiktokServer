@@ -18,6 +18,17 @@ type User struct {
 	TotalFavorited int64  `json:"total_favorited,omitempty"`
 	FavoriteCount  int64  `json:"favorite_count,omitempty"`
 }
+
+// 视频基础信息结构体
+type TableVideo struct {
+	Id          int64 `json:"id"`			// 视频 ID
+	AuthorId    int64						// 作者 ID
+	PlayUrl     string `json:"play_url"`	// 视频存放地址
+	CoverUrl    string `json:"cover_url"`	// 封面存放地址
+	PublishTime time.Time					// 发布事件
+	Title       string `json:"title"` 		// 视频名称
+}
+
 ```
 **响应报文**
 ```go
@@ -99,6 +110,26 @@ u, err := usi.GetUserById(id)
 c.JSON(http.StatusOK, UserResponse{
 	Response: Response{StatusCode: 0},
 	User: u,
+})
+```
+
+## 发布视频功能
+```go
+// 4.1 Gin 路由组监听发布视频事件
+apiRouter.POST("/publish/action/", jwt.AuthBody(), controller.Publish)
+// 4.2 获取请求中的表单数据, 用户 ID, 视频信息
+data, err := c.FormFile("data")
+userId, _ := strconv.ParseInt(c.GetString("userId"), 10, 64)
+title := c.PostForm("title")
+// 4.3 将视频数据在 FTP 文件服务器中, 通过 ffmpeg 截取视频封面
+err = dao.VideoFTP(file, videoName)
+err := Ffmpeg(f.VideoName, f.ImageName)
+// 4.4 将视频信息, 封面信息放在数据库中
+err = dao.Save(videoName, imageName, userId, title)
+// 4.5 返回视频发布的响应报文
+c.JSON(http.StatusOK, Response{
+	StatusCode: 0,
+	StatusMsg:  "uploaded successfully",
 })
 ```
 

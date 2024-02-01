@@ -92,7 +92,7 @@ func Login(c *gin.Context) {
 
 // 获取用户信息
 func UserInfo(c *gin.Context) {
-	// 3.2 从 URL 中获取用户ID
+	// 3.2 从 URL 中获取用户 ID
 	user_id := c.Query("user_id")
 	id, _ := strconv.ParseInt(user_id, 10, 64)
 	usi := service.UserServiceImpl{

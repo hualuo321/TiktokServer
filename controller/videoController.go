@@ -51,7 +51,7 @@ func Feed(c *gin.Context) {
 	})
 }
 
-// Publish /publish/action/
+// 发布视频
 func Publish(c *gin.Context) {
 	data, err := c.FormFile("data")
 	userId, _ := strconv.ParseInt(c.GetString("userId"), 10, 64)

@@ -15,8 +15,11 @@ func initRouter(r *gin.Engine) {
 	apiRouter.POST("/user/register/", controller.Register)
 	// 3.1 Gin 路由组监听获取用户信息事件
 	apiRouter.GET("/user/", jwt.Auth(), controller.UserInfo)
-	apiRouter.GET("/feed/", jwt.AuthWithoutLogin(), controller.Feed)
+	// 4.1 Gin 路由组监听发布视频事件
 	apiRouter.POST("/publish/action/", jwt.AuthBody(), controller.Publish)
+	
+	apiRouter.GET("/feed/", jwt.AuthWithoutLogin(), controller.Feed)
+
 	apiRouter.GET("/publish/list/", jwt.Auth(), controller.PublishList)
 
 

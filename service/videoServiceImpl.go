@@ -61,7 +61,6 @@ func (videoService *VideoServiceImpl) GetVideo(videoId int64, userId int64) (Vid
 	return video, nil
 }
 
-// Publish
 // 将传入的视频流保存在文件服务器中，并存储在mysql表中
 func (videoService *VideoServiceImpl) Publish(data *multipart.FileHeader, userId int64, title string) error {
 	//将视频流上传到视频服务器，保存视频链接
@@ -71,7 +70,7 @@ func (videoService *VideoServiceImpl) Publish(data *multipart.FileHeader, userId
 		return err
 	}
 	log.Printf("方法data.Open() 成功")
-	//生成一个uuid作为视频的名字
+	// 生成一个 uuid 作为视频的名字
 	videoName := uuid.NewV4().String()
 	log.Printf("生成视频名称%v", videoName)
 	err = dao.VideoFTP(file, videoName)
