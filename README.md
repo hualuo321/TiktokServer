@@ -23,15 +23,15 @@ type User struct {
 ```go
 // 基础响应报文 (状态码, 状态信息)
 type Response struct {
-	StatusCode int32  `json:"status_code"`          // 状态码
-	StatusMsg  string `json:"status_msg,omitempty"` // 状态信息
+	StatusCode int32  `json:"status_code"`			// 状态码
+	StatusMsg  string `json:"status_msg,omitempty"`	// 状态信息
 }
 
 // 用户登录响应报文
 type UserLoginResponse struct {
 	Response
-	UserId int64  `json:"user_id,omitempty"`        // 用户 ID
-	Token  string `json:"token"`                    // token
+	UserId int64  `json:"user_id,omitempty"`	// 用户 ID
+	Token  string `json:"token"`				// token
 }
 
 // 用户信息响应报文
@@ -59,8 +59,8 @@ token := service.GenerateToken(username)
 // 1.7 生成一个登录响应返回给客户端
 c.JSON(http.StatusOK, UserLoginResponse{
 	Response: Response{StatusCode: 0},
-	UserId:   u.Id,
-	Token:    token,
+	UserId: u.Id,
+	Token: token,
 })
 ```
 
@@ -81,8 +81,8 @@ token := service.GenerateToken(username)
 // 2.6 生成一个用户登录响应报文返回给客户端 (注册好自动登录)
 c.JSON(http.StatusOK, UserLoginResponse{
 	Response: Response{StatusCode: 0},
-	UserId:   u.Id,
-	Token:    token,
+	UserId: u.Id,
+	Token: token,
 })
 ```
 
@@ -97,7 +97,7 @@ u, err := usi.GetUserById(id)
 // 3.4 返回用户信息响应报文
 c.JSON(http.StatusOK, UserResponse{
 	Response: Response{StatusCode: 0},
-	User:     u,
+	User: u,
 })
 ```
 
