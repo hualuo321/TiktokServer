@@ -10,11 +10,11 @@ type TableUser struct {
 
 // 用户信息结构体
 type User struct {
-	Id             int64  `json:"id,omitempty"` 				// 用户 ID
-	Name           string `json:"name,omitempty"`				// 用户名
-	FollowCount    int64  `json:"follow_count"` 				// 查询对象的关注数
-	FollowerCount  int64  `json:"follower_count"`				// 查询对象的粉丝数
-	IsFollow       bool   `json:"is_follow"`     				// 当前用户是否关注该查询对象
+	Id             int64  `json:"id,omitempty"` 			// 用户 ID
+	Name           string `json:"name,omitempty"`			// 用户名
+	FollowCount    int64  `json:"follow_count"` 			// 查询对象的关注数
+	FollowerCount  int64  `json:"follower_count"`			// 查询对象的粉丝数
+	IsFollow       bool   `json:"is_follow"`     			// 当前用户是否关注该查询对象
 	TotalFavorited int64  `json:"total_favorited,omitempty"`
 	FavoriteCount  int64  `json:"favorite_count,omitempty"`
 }
@@ -23,7 +23,7 @@ type User struct {
 ```go
 // 基础响应报文 (状态码, 状态信息)
 type Response struct {
-	StatusCode int32  `json:"status_code"`  		// 状态码
+	StatusCode int32  `json:"status_code"`  	// 状态码
 	StatusMsg  string `json:"status_msg,omitempty"`	// 状态信息
 }
 
@@ -31,7 +31,7 @@ type Response struct {
 type UserLoginResponse struct {
 	Response
 	UserId int64  `json:"user_id,omitempty"`	// 用户 ID
-	Token  string `json:"token"`				// token
+	Token  string `json:"token"`			// token
 }
 
 // 用户信息响应报文
