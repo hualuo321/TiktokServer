@@ -21,12 +21,12 @@ type User struct {
 
 // 视频基础信息结构体
 type TableVideo struct {
-	Id          int64 `json:"id"`			// 视频 ID
-	AuthorId    int64						// 作者 ID
+	Id          int64 `json:"id"`		// 视频 ID
+	AuthorId    int64			// 作者 ID
 	PlayUrl     string `json:"play_url"`	// 视频存放地址
 	CoverUrl    string `json:"cover_url"`	// 封面存放地址
-	PublishTime time.Time					// 发布事件
-	Title       string `json:"title"` 		// 视频名称
+	PublishTime time.Time			// 发布事件
+	Title       string `json:"title"` 	// 视频名称
 }
 
 ```
