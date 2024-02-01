@@ -4,11 +4,11 @@ import (
 	"log"
 )
 
-// TableUser 对应数据库User表结构的结构体
+// 用户信息结构体
 type TableUser struct {
-	Id       int64
-	Name     string
-	Password string
+	Id       int64			// ID
+	Name     string			// 用户名
+	Password string			// 密码
 }
 
 // TableName 修改表名映射
@@ -26,9 +26,10 @@ func GetTableUserList() ([]TableUser, error) {
 	return tableUsers, nil
 }
 
-// GetTableUserByUsername 根据username获得TableUser对象
+// 根据用户名获得用户信息
 func GetTableUserByUsername(name string) (TableUser, error) {
 	tableUser := TableUser{}
+	// 在数据库中根据用户名查找, 并返回对应的用户信息
 	if err := Db.Where("name = ?", name).First(&tableUser).Error; err != nil {
 		log.Println(err.Error())
 		return tableUser, err

@@ -8,13 +8,19 @@ import (
 
 func initRouter(r *gin.Engine) {
 	apiRouter := r.Group("/douyin")
-	// basic apis
+	// 基础 API
+	// 1.1 Gin 路由组监听用户登录事件
+	apiRouter.POST("/user/login/", controller.Login)
+	// 2.1 Gin 路由组监听用户注册事件
+	apiRouter.POST("/user/register/", controller.Register)
+	// 3.1 Gin 路由组监听获取用户信息事件
+	apiRouter.GET("/user/", jwt.Auth(), controller.UserInfo)
 	apiRouter.GET("/feed/", jwt.AuthWithoutLogin(), controller.Feed)
 	apiRouter.POST("/publish/action/", jwt.AuthBody(), controller.Publish)
 	apiRouter.GET("/publish/list/", jwt.Auth(), controller.PublishList)
-	apiRouter.GET("/user/", jwt.Auth(), controller.UserInfo)
-	apiRouter.POST("/user/register/", controller.Register)
-	apiRouter.POST("/user/login/", controller.Login)
+
+
+
 	// extra apis - I
 	apiRouter.POST("/favorite/action/", jwt.Auth(), controller.FavoriteAction)
 	apiRouter.GET("/favorite/list/", jwt.Auth(), controller.GetFavouriteList)

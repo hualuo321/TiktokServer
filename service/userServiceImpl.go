@@ -148,7 +148,7 @@ func (usi *UserServiceImpl) GetUserByIdWithCurId(id int64, curId int64) (User, e
 	return user, nil
 }
 
-// GenerateToken 根据username生成一个token
+// 根据用户名生成一个 token
 func GenerateToken(username string) string {
 	u := UserService.GetTableUserByUsername(new(UserServiceImpl), username)
 	fmt.Printf("generatetoken: %v\n", u)
@@ -157,22 +157,22 @@ func GenerateToken(username string) string {
 	return token
 }
 
-// NewToken 根据信息创建token
+// 根据用户对象生成一个 token
 func NewToken(u dao.TableUser) string {
 	expiresTime := time.Now().Unix() + int64(config.OneDayOfHours)
 	fmt.Printf("expiresTime: %v\n", expiresTime)
 	id64 := u.Id
 	fmt.Printf("id: %v\n", strconv.FormatInt(id64, 10))
 	claims := jwt.StandardClaims{
-		Audience:  u.Name,
-		ExpiresAt: expiresTime,
-		Id:        strconv.FormatInt(id64, 10),
+		Audience:  u.Name,						// 用户名
+		ExpiresAt: expiresTime,					// token 过期时间
+		Id:        strconv.FormatInt(id64, 10),	// 用户ID
 		IssuedAt:  time.Now().Unix(),
 		Issuer:    "tiktok",
 		NotBefore: time.Now().Unix(),
 		Subject:   "token",
 	}
-	var jwtSecret = []byte(config.Secret)
+	var jwtSecret = []byte(config.Secret)		// 密钥
 	tokenClaims := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	if token, err := tokenClaims.SignedString(jwtSecret); err == nil {
 		token = "Bearer " + token
@@ -184,7 +184,7 @@ func NewToken(u dao.TableUser) string {
 	}
 }
 
-// EnCoder 密码加密
+// 对密码进行 sha256 加密
 func EnCoder(password string) string {
 	h := hmac.New(sha256.New, []byte(password))
 	sha := hex.EncodeToString(h.Sum(nil))
