@@ -40,8 +40,9 @@ type UserResponse struct {
 	User service.User `json:"user"`
 }
 ```
+# 功能介绍
 
-# 用户登录功能
+## 用户登录功能
 ```go
 // 1.1 Gin 路由组监听用户登录事件
 apiRouter.POST("/user/login/", controller.Login)
@@ -64,7 +65,7 @@ c.JSON(http.StatusOK, UserLoginResponse{
 })
 ```
 
-# 用户注册功能
+## 用户注册功能
 ```go
 // 2.1 Gin 路由组监听用户注册事件
 apiRouter.POST("/user/register/", controller.Register)
@@ -86,7 +87,7 @@ c.JSON(http.StatusOK, UserLoginResponse{
 })
 ```
 
-# 获取用户信息功能
+## 获取用户信息功能
 ```go
 // 3.1 Gin 路由组监听获取用户信息事件
 apiRouter.GET("/user/", jwt.Auth(), controller.UserInfo)
