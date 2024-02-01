@@ -10,11 +10,11 @@ type TableUser struct {
 
 // 用户信息结构体
 type User struct {
-	Id             int64  `json:"id,omitempty"`					// 用户 ID
+	Id             int64  `json:"id,omitempty"` 				// 用户 ID
 	Name           string `json:"name,omitempty"`				// 用户名
-	FollowCount    int64  `json:"follow_count"`					// 查询对象的关注数
+	FollowCount    int64  `json:"follow_count"` 				// 查询对象的关注数
 	FollowerCount  int64  `json:"follower_count"`				// 查询对象的粉丝数
-	IsFollow       bool   `json:"is_follow"`					// 当前用户是否关注该查询对象
+	IsFollow       bool   `json:"is_follow"`     				// 当前用户是否关注该查询对象
 	TotalFavorited int64  `json:"total_favorited,omitempty"`
 	FavoriteCount  int64  `json:"favorite_count,omitempty"`
 }
