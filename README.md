@@ -280,7 +280,32 @@ redis.RdbLikeVideoId.SAdd(redis.Ctx, strVideoId, likeUserId)
 count = redis.RdbLikeVideoId.SCard(redis.Ctx, strVideoId).Result()
 ```
 
-
+## 点赞视频
+```go
+// Gin 路由组监听点赞视频事件
+apiRouter.POST("/favorite/action/", jwt.Auth(), controller.FavoriteAction)
+// 解析 cur_id，video_id，action_type
+cur_id := c.GetString("user_id")
+video_id = c.Query("video_id")
+action_type = c.Query("action_type")
+// 进行点赞操作
+err := like.FavouriteAction(cur_id, video_id, int32(action_type))
+// 在 Redis 中查询有无记录
+n, err := redis.RdbLikeUserId.Exists(redis.Ctx, cur_id).Result()
+// 如果有，则更新缓存
+_, err1 := redis.RdbLikeUserId.SAdd(redis.Ctx, cur_id, video_id).Result()
+// 将数据库更新的操作放入消息队列
+rabbitmq.RmqLikeAdd.Publish(sb.String())
+// 如果没有，则更新缓存
+_, err := redis.RdbLikeUserId.SAdd(redis.Ctx, strUserId, config.DefaultRedisValue).Result()
+// 设置过期时间
+_, err := redis.RdbLikeUserId.Expire(redis.Ctx, strUserId, time.Duration(config.OneMonth)*time.Second).Result()
+// 根据 cur_id 获取点赞过的视频 ID 列表
+videoIdList, err1 := dao.GetLikeVideoIdList(userId)
+// 将 key-value 信息更新到缓存
+_, err1 := redis.RdbLikeUserId.SAdd(redis.Ctx, strUserId, likeVideoId).Result()
+// 将数据库更新的操作放入消息队列
+```
 
 
 
@@ -313,6 +338,35 @@ context.Set("userId", userId)
 context.Next()
 ```
 ****
+
+## ffmpeg 截图
+**结构体**
+```go
+// 存放视频名和封面名
+type Ffmsg struct {
+	VideoName string
+	ImageName string
+}
+```
+**Init()**
+```go
+// 创建一个 ssh 连接对象，连接到服务器
+ClientSSH, err = ssh.Dial("tcp", addr, SSHconfig)
+// 创建一个管道，用于存放视频名，封面名信息
+Ffchan = make(chan Ffmsg, config.MaxMsgCount)
+// 调用协程，从管道中取出一个数据进行处理，并且保持长连接
+go dispatcher()
+go keepAlive()
+// dispatcher 处理，就是循环从管道取数据，截取封面
+for ffmsg := range Ffchan {
+    go func(f Ffmsg) { err := Ffmpeg(f.VideoName, f.ImageName) }(ffmsg)
+}
+// 通过远程调用ffmpeg命令来截图, 截取的图放在服务器中的指定路径
+session, err := ClientSSH.NewSession()
+combo, err := session.CombinedOutput("ls;/usr/.../ffmpeg -ss 00:00:01 -i /video_path/" + videoName + ".mp4 -vframes 1 /images_path/" + imageName + ".jpg")
+```
+
+
 
 # 相关知识
 [JWT token](https://www.ruanyifeng.com/blog/2018/07/json_web_token-tutorial.html)
