@@ -1,3 +1,21 @@
+- [常用结构](#常用结构)
+- [功能介绍](#功能介绍)
+	- [用户登录功能](#用户登录功能)
+	- [用户注册功能](#用户注册功能)
+	- [3. 获取用户信息功能](#3-获取用户信息功能)
+	- [4. 发布视频功能](#4-发布视频功能)
+	- [5. 获取已发布视频功能](#5-获取已发布视频功能)
+	- [6. 拉取视频列表到首页功能](#6-拉取视频列表到首页功能)
+	- [](#)
+	- [7. 根据登录用户 ID 和查询用户 ID, 获取查询用户的详细信息](#7-根据登录用户-id-和查询用户-id-获取查询用户的详细信息)
+	- [8. 根据视频 ID 获取视频的点赞数量](#8-根据视频-id-获取视频的点赞数量)
+	- [9. 点赞视频](#9-点赞视频)
+- [中间件](#中间件)
+	- [JWT 鉴权模块](#jwt-鉴权模块)
+	- [ffmpeg 截图模块](#ffmpeg-截图模块)
+- [相关知识](#相关知识)
+
+
 # 常用结构
 **用户结构**
 ```go
@@ -121,7 +139,7 @@ c.JSON(http.StatusOK, UserLoginResponse{
 })
 ```
 
-## 获取用户信息功能
+##  3. <a name='-1'></a>获取用户信息功能
 ```go
 // 3.1 Gin 路由组监听获取用户信息事件
 apiRouter.GET("/user/", jwt.Auth(), controller.UserInfo)
@@ -136,7 +154,7 @@ c.JSON(http.StatusOK, UserResponse{
 })
 ```
 
-## 发布视频功能
+##  4. <a name='-1'></a>发布视频功能
 ```go
 // 4.1 Gin 路由组监听发布视频事件
 apiRouter.POST("/publish/action/", jwt.AuthBody(), controller.Publish)
@@ -156,7 +174,7 @@ c.JSON(http.StatusOK, Response{
 })
 ```
 
-## 获取已发布视频功能
+##  5. <a name='-1'></a>获取已发布视频功能
 ```go
 // 5.1 Gin 路由组监听获取已发布视频事件
 apiRouter.GET("/publish/list/", jwt.Auth(), controller.PublishList)
@@ -181,7 +199,7 @@ c.JSON(http.StatusOK, VideoListResponse{
 })
 ```
 
-## 拉取视频列表到首页功能
+##  6. <a name='-1'></a>拉取视频列表到首页功能
 ```go
 // 6.1 Gin 路由组监听拉取视频列表事件
 apiRouter.GET("/feed/", jwt.AuthWithoutLogin(), controller.Feed)
@@ -209,7 +227,7 @@ c.JSON(http.StatusOK, FeedResponse{
 
 ## 
 
-## 根据登录用户 ID 和查询用户 ID, 获取查询用户的详细信息
+##  7. <a name='IDID'></a>根据登录用户 ID 和查询用户 ID, 获取查询用户的详细信息
 ```go
 // 1. 根据登录用户 ID 和查询用户 ID, 获取查询用户的详细信息
 user = UserServer.GetUserByIdWithCurId(curID int64, userID int64)
@@ -261,7 +279,7 @@ user.isfollow = isfollow
 return user
 ```
 
-## 根据视频 ID 获取视频的点赞数量
+##  8. <a name='ID'></a>根据视频 ID 获取视频的点赞数量
 ```go
 favoriteCnt = VideoServer.FavouriteCount(tableVideo.ID)
 # 判断 Redis 中是否存在记录
@@ -280,7 +298,7 @@ redis.RdbLikeVideoId.SAdd(redis.Ctx, strVideoId, likeUserId)
 count = redis.RdbLikeVideoId.SCard(redis.Ctx, strVideoId).Result()
 ```
 
-## 点赞视频
+##  9. <a name='-1'></a>点赞视频
 ```go
 // Gin 路由组监听点赞视频事件
 apiRouter.POST("/favorite/action/", jwt.Auth(), controller.FavoriteAction)
@@ -339,7 +357,7 @@ context.Next()
 ```
 ****
 
-## ffmpeg 截图
+## ffmpeg 截图模块
 **结构体**
 ```go
 // 存放视频名和封面名
