@@ -15,8 +15,8 @@ type User struct {
 	FollowCount    int64  `json:"follow_count"` 			// 查询对象的关注数
 	FollowerCount  int64  `json:"follower_count"`			// 查询对象的粉丝数
 	IsFollow       bool   `json:"is_follow"`     			// 登录用户是否关注该查询对象
-	TotalFavorited int64  `json:"total_favorited,omitempty"`
-	FavoriteCount  int64  `json:"favorite_count,omitempty"`
+	TotalFavorited int64  `json:"total_favorited,omitempty"`// 查询用户的总被点赞量
+	FavoriteCount  int64  `json:"favorite_count,omitempty"`	// 查询用户点赞了多少其他视频
 }
 
 // 视频表结构体
@@ -41,25 +41,39 @@ type Video struct {
 
 **响应报文**
 ```go
-// 基础响应报文 (状态码, 状态信息)
+// 基础响应 (状态码, 状态信息)
 type Response struct {
-	StatusCode int32  `json:"status_code"`  	// 状态码
-	StatusMsg  string `json:"status_msg,omitempty"`	// 状态信息
+	StatusCode int32  `json:"status_code"`
+	StatusMsg  string `json:"status_msg,omitempty"`
 }
 
-// 用户登录响应报文
+// 用户登录响应
 type UserLoginResponse struct {
 	Response
-	UserId int64  `json:"user_id,omitempty"`	// 用户 ID
-	Token  string `json:"token"`			// token
+	UserId int64  `json:"user_id,omitempty"`
+	Token  string `json:"token"`
 }
 
-// 用户信息响应报文
+// 用户信息响应
 type UserResponse struct {
 	Response
 	User service.User `json:"user"`
 }
+
+// 点赞响应
+type likeResponse struct {
+	StatusCode int32  `json:"status_code"`
+	StatusMsg  string `json:"status_msg,omitempty"`
+}
+
+// 获取点赞列表响应
+type GetFavouriteListResponse struct {
+	StatusCode int32           `json:"status_code"`
+	StatusMsg  string          `json:"status_msg,omitempty"`
+	VideoList  []service.Video `json:"video_list,omitempty"`
+}
 ```
+
 # 功能介绍
 
 ## 用户登录功能
@@ -167,6 +181,34 @@ c.JSON(http.StatusOK, VideoListResponse{
 })
 ```
 
+## 拉取视频列表到首页功能
+```go
+// 6.1 Gin 路由组监听拉取视频列表事件
+apiRouter.GET("/feed/", jwt.AuthWithoutLogin(), controller.Feed)
+// 6.2 获取请求中的参数信息 (最近时间, curID)
+lastTime := c.Query("latest_time")
+curId, _ := strconv.ParseInt(c.GetString("userId"), 10, 64)
+// 6.3 根据用户 ID 和最近时间拉取视频流
+feed, nextTime, err := videoService.Feed(lastTime, curId)
+tableVideos, err := dao.GetVideosByLastTime(lastTime)
+result := Db.Where("publish_time<?", lastTime).Order("publish_time desc").Limit(config.VideoCount).Find(&videos)
+// 6.4 将视频的基本信息转化为视频的详细信息
+err = videoService.copyVideos(&videos, &tableVideos, curId)
+videoService.creatVideo(&video, &temp, curId)
+go func() { video.Author, err = videoService.GetUserByIdWithCurId(data.AuthorId, userId) }
+go func() { video.FavoriteCount, err = videoService.FavouriteCount(data.Id) }
+go func() { video.CommentCount, err = videoService.CountFromVideoId(data.Id) }
+go func() { video.IsFavorite, err = videoService.IsFavourite(video.Id, userId) }
+// 6.5 返回拉取视频结果
+c.JSON(http.StatusOK, FeedResponse{
+    Response:  Response{StatusCode: 0},
+    VideoList: feed,
+    NextTime:  nextTime.Unix(),
+})
+```
+
+## 
+
 ## 根据登录用户 ID 和查询用户 ID, 获取查询用户的详细信息
 ```go
 // 1. 根据登录用户 ID 和查询用户 ID, 获取查询用户的详细信息
@@ -238,6 +280,39 @@ redis.RdbLikeVideoId.SAdd(redis.Ctx, strVideoId, likeUserId)
 count = redis.RdbLikeVideoId.SCard(redis.Ctx, strVideoId).Result()
 ```
 
+
+
+
+
+
+
+
+
+# 中间件
+## JWT 鉴权模块
+**Auth()**
+```go
+// 首先会获取token，检查用户携带的token是否正确，
+auth := context.Query("token")
+token, err := parseToken(auth)
+// 如果token正确，则将用登录者的用户ID放入上下文中，并放行
+context.Set("userId", token.Id)
+context.Next()
+// 如果token不正确，则终止
+context.Abort()
+```
+**AuthWithoutLogin()**
+```go
+// 在未登录情况下，如果携带token，则会解析token检查是否正确
+auth := context.Query("token")
+token, err := parseToken(auth)
+// 如果没有携带token，则userID默认为0，并放行
+userId = "0"
+// 如果token正确，则将用登录者的userID放入上下文中，并放行
+context.Set("userId", userId)
+context.Next()
+```
+****
 
 # 相关知识
 [JWT token](https://www.ruanyifeng.com/blog/2018/07/json_web_token-tutorial.html)

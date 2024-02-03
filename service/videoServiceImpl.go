@@ -30,7 +30,7 @@ func (videoService VideoServiceImpl) Feed(lastTime time.Time, userId int64) ([]V
 		return nil, time.Time{}, err
 	}
 	log.Printf("方法dao.GetVideosByLastTime(lastTime) 成功：%v", tableVideos)
-	//将数据通过copyVideos进行处理，在拷贝的过程中对数据进行组装
+	// 将数据通过copyVideos进行处理，在拷贝的过程中对数据进行组装
 	err = videoService.copyVideos(&videos, &tableVideos, userId)
 	if err != nil {
 		log.Printf("方法videoService.copyVideos(&videos, &tableVideos, userId) 失败：%v", err)

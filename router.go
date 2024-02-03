@@ -19,13 +19,10 @@ func initRouter(r *gin.Engine) {
 	apiRouter.POST("/publish/action/", jwt.AuthBody(), controller.Publish)
 	// 5.1 Gin 路由组监听获取已发布视频事件
 	apiRouter.GET("/publish/list/", jwt.Auth(), controller.PublishList)
+	// 6.1 Gin 路由组监听拉取视频列表事件
 	apiRouter.GET("/feed/", jwt.AuthWithoutLogin(), controller.Feed)
-
-
-
-
-
 	// extra apis - I
+	// 7.1 Gin 路由组监听点赞视频事件
 	apiRouter.POST("/favorite/action/", jwt.Auth(), controller.FavoriteAction)
 	apiRouter.GET("/favorite/list/", jwt.Auth(), controller.GetFavouriteList)
 	apiRouter.POST("/comment/action/", jwt.Auth(), controller.CommentAction)
