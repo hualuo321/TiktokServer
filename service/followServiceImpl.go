@@ -58,6 +58,7 @@ func (*FollowServiceImp) IsFollowing(userId int64, targetId int64) (bool, error)
 
 	return true, nil
 }
+
 func addRelationToRedis(userId int, targetId int) {
 	// 第一次存入时，给该key添加一个-1为key，防止脏数据的写入。当然set可以去重，直接加，便于CPU。
 	redis.RdbFollowingPart.SAdd(redis.Ctx, strconv.Itoa(int(userId)), -1)
@@ -86,6 +87,7 @@ func (*FollowServiceImp) GetFollowerCnt(userId int64) (int64, error) {
 
 	return int64(len(ids)), err
 }
+
 func addFollowersToRedis(userId int, ids []int64) {
 	redis.RdbFollowers.SAdd(redis.Ctx, strconv.Itoa(userId), -1)
 	for i, id := range ids {
@@ -101,7 +103,7 @@ func addFollowersToRedis(userId int, ids []int64) {
 
 }
 
-// GetFollowingCnt 给定当前用户id，查询其关注者数量。
+// 给定当前用户id，查询其关注者数量。
 func (*FollowServiceImp) GetFollowingCnt(userId int64) (int64, error) {
 	// 查看Redis中是否有关注数。
 	if cnt, err := redis.RdbFollowing.SCard(redis.Ctx, strconv.Itoa(int(userId))).Result(); cnt > 0 {

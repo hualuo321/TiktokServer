@@ -103,7 +103,7 @@ func (usi *UserServiceImpl) GetUserById(id int64) (User, error) {
 	return user, nil
 }
 
-// GetUserByIdWithCurId 已登录(curID)情况下,根据user_id获得User对象
+// 已登录(curID)情况下,根据user_id获得User对象
 func (usi *UserServiceImpl) GetUserByIdWithCurId(id int64, curId int64) (User, error) {
 	user := User{
 		Id:             0,

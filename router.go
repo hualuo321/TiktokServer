@@ -17,10 +17,11 @@ func initRouter(r *gin.Engine) {
 	apiRouter.GET("/user/", jwt.Auth(), controller.UserInfo)
 	// 4.1 Gin 路由组监听发布视频事件
 	apiRouter.POST("/publish/action/", jwt.AuthBody(), controller.Publish)
-	
+	// 5.1 Gin 路由组监听获取已发布视频事件
+	apiRouter.GET("/publish/list/", jwt.Auth(), controller.PublishList)
 	apiRouter.GET("/feed/", jwt.AuthWithoutLogin(), controller.Feed)
 
-	apiRouter.GET("/publish/list/", jwt.Auth(), controller.PublishList)
+
 
 
 

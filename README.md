@@ -1,25 +1,25 @@
 # 常用结构
 **用户结构**
 ```go
-// 用户账号结构体
+// 用户基础信息结构体
 type TableUser struct {
 	Id       int64			// 用户 ID
 	Name     string			// 用户名
 	Password string			// 密码
 }
 
-// 用户信息结构体
+// 用户详细信息信息结构体
 type User struct {
 	Id             int64  `json:"id,omitempty"` 			// 用户 ID
 	Name           string `json:"name,omitempty"`			// 用户名
 	FollowCount    int64  `json:"follow_count"` 			// 查询对象的关注数
 	FollowerCount  int64  `json:"follower_count"`			// 查询对象的粉丝数
-	IsFollow       bool   `json:"is_follow"`     			// 当前用户是否关注该查询对象
+	IsFollow       bool   `json:"is_follow"`     			// 登录用户是否关注该查询对象
 	TotalFavorited int64  `json:"total_favorited,omitempty"`
 	FavoriteCount  int64  `json:"favorite_count,omitempty"`
 }
 
-// 视频基础信息结构体
+// 视频表结构体
 type TableVideo struct {
 	Id          int64 `json:"id"`		// 视频 ID
 	AuthorId    int64			// 作者 ID
@@ -29,7 +29,16 @@ type TableVideo struct {
 	Title       string `json:"title"` 	// 视频名称
 }
 
+// 视频信息结构体
+type Video struct {
+	dao.TableVideo
+	Author        User  `json:"author"`				// 作者
+	FavoriteCount int64 `json:"favorite_count"`		// 点赞量
+	CommentCount  int64 `json:"comment_count"`		// 评论量
+	IsFavorite    bool  `json:"is_favorite"`		// 登录用户对该视频是否点赞
+}
 ```
+
 **响应报文**
 ```go
 // 基础响应报文 (状态码, 状态信息)
@@ -132,6 +141,103 @@ c.JSON(http.StatusOK, Response{
 	StatusMsg:  "uploaded successfully",
 })
 ```
+
+## 获取已发布视频功能
+```go
+// 5.1 Gin 路由组监听获取已发布视频事件
+apiRouter.GET("/publish/list/", jwt.Auth(), controller.PublishList)
+// 5.2 获取查询用户 ID, 登录用户 ID
+user_Id, _ := c.GetQuery("user_id")
+curId, _ := strconv.ParseInt(c.GetString("userId"), 10, 64)
+// 5.3 根据查询用户 ID 获取他发布视频的视频列表
+list, err := videoService.List(userId, curId)
+data, err := dao.GetVideosByAuthorId(userId)
+result := Db.Where(&TableVideo{AuthorId: authorId}).Find(&data)
+// 5.4 根据视频基础信息组装视频详细信息 (协程)
+err = videoService.copyVideos(&result, &data, curId)
+videoService.creatVideos(&video, &temp, userId)
+go func() { video.Author, err = videoService.GetUserByIdWithCurId(data.AuthorId, userId) }
+go func() { video.FavoriteCount, err = videoService.FavouriteCount(data.Id) }
+go func() { video.CommentCount, err = videoService.CountFromVideoId(data.Id) }
+go func() { video.IsFavorite, err = videoService.IsFavourite(video.Id, userId) }
+// 5.5 将获取到的视频详细信息返回给客户端
+c.JSON(http.StatusOK, VideoListResponse{
+	Response:  Response{StatusCode: 0},
+	VideoList: list,
+})
+```
+
+## 根据登录用户 ID 和查询用户 ID, 获取查询用户的详细信息
+```go
+// 1. 根据登录用户 ID 和查询用户 ID, 获取查询用户的详细信息
+user = UserServer.GetUserByIdWithCurId(curID int64, userID int64)
+// 2. 初始化空的用户详细信息结构体
+user = User { ... }
+// 3. 获取用户基本信息, 赋值给初始化空的结构体
+tableUser = UserServer.GetTableUserById(userID int64)
+tableUser = UserDao.GetTableUserById(userID int64)
+Db.Where("id = ?", id).First(&tableUser)
+# 赋值操作
+user.name = tableUser.name ...
+// 4. 获取查询用户的关注数, 赋值给初始化空的结构体
+followCnt = FollowServer.GetFollowingCnt(userID int64)
+# 检查 Redis 中是否存在该记录
+followCnt = redis.RdbFollowing.SCard(redis.Ctx, strconv.Itoa(int(userId))).Result()
+# 如果 Redis 中存在， 则更新过期时间, 返回
+redis.RdbFollowing.Expire(redis.Ctx, strconv.Itoa(int(userId)), config.ExpireTime)
+# 如果 Redis 中不存在， 则从数据库中查找符合条件的列表
+ids = FollowDao.GetFollowingIds(userID int64)
+Db.Model(Follow{}).Where("follower_id = ?", userId).Pluck("user_id", &ids)
+# 将查询到的内容放到缓存中
+go addFollowingToRedis(userId int, ids []int64)
+followCnt = len(ids)
+user.FollowCnt = followCnt
+// 5. 获取查询用户的粉丝数, 赋值给初始化空的结构体
+followerCnt = FollowServer.GetFollowerCnt(userID int64)
+# 检查 Redis 中是否存在该记录
+followerCnt = redis.RdbFollowers.SCard(redis.Ctx, strconv.Itoa(int(userId))).Result()
+# 如果 Redis 中存在， 则更新过期时间, 返回
+redis.RdbFollowers.Expire(redis.Ctx, strconv.Itoa(int(userId)), config.ExpireTime)
+# 如果 Redis 中不存在， 则从数据库中查找符合条件的列表
+ids = FollowDao.GetFollowersIds(userID int64)
+Db.Model(Follow{}).Where("user_id = ?", userId).Where("cancel = ?", 0).Pluck("follower_id", &ids)
+# 将查询到的内容放到缓存中
+go addFollowersToRedis(int(userId), ids)
+user.FollowerCnt = followerCnt
+// 6. 判断登录使用是否关注查询用户
+isfollow = FollowServer.IsFollowing(curID int64, userID int64)
+# 检查 Redis 中是否存在该记录
+flag = redis.RdbFollowingPart.SIsMember(redis.Ctx, strconv.Itoa(int(userId)), targetId).Result()
+# 如果 Redis 中存在， 则更新过期时间, 返回
+redis.RdbFollowingPart.Expire(redis.Ctx, strconv.Itoa(int(userId)), config.ExpireTime)
+# 如果 Redis 中不存在， 则从数据库中查找关系
+relation = FellowDao.FindRelation(curID, userID)
+# 将查询到的内容放到缓存中
+go addRelationToRedis(int(curID), int(userID))
+user.isfollow = isfollow
+// 7. 返回获取到的用户信息
+return user
+```
+
+## 根据视频 ID 获取视频的点赞数量
+```go
+favoriteCnt = VideoServer.FavouriteCount(tableVideo.ID)
+# 判断 Redis 中是否存在记录
+n = redis.RdbLikeVideoId.Exists(redis.Ctx, strVideoId).Result()
+# 如果 Redis 中存在， 则返回
+count = redis.RdbLikeVideoId.SCard(redis.Ctx, strVideoId).Result()
+# 如果 Redis 中不存在， 添加数据到缓存中
+redis.RdbLikeVideoId.Del(redis.Ctx, strVideoId)
+# 设置过期时间
+redis.RdbLikeVideoId.Expire(redis.Ctx, strVideoId, time.Duration(config.OneMonth)*time.Second).Result()
+# 根据 videoID 获取点赞的 userID
+userID[] = GetLikeUserIdList(videoId int64)
+Db.Model(Like{}).Where(map[string]interface{}{"video_id": videoId, "cancel": config.IsLike}).Pluck("user_id", &likeUserIdList)
+# 将相关信息写入缓存, 重新从缓存中读取数据
+redis.RdbLikeVideoId.SAdd(redis.Ctx, strVideoId, likeUserId)
+count = redis.RdbLikeVideoId.SCard(redis.Ctx, strVideoId).Result()
+```
+
 
 # 相关知识
 [JWT token](https://www.ruanyifeng.com/blog/2018/07/json_web_token-tutorial.html)

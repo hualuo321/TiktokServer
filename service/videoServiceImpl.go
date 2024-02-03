@@ -97,10 +97,9 @@ func (videoService *VideoServiceImpl) Publish(data *multipart.FileHeader, userId
 	return nil
 }
 
-// List
-// 通过userId来查询对应用户发布的视频，并返回对应的视频数组
+// 通过 userId 来查询对应用户发布的视频，并返回对应的视频数组
 func (videoService *VideoServiceImpl) List(userId int64, curId int64) ([]Video, error) {
-	//依据用户id查询所有的视频，获取视频列表
+	// 5.3 根据查询用户 ID 获取其发布视频的视频列表
 	data, err := dao.GetVideosByAuthorId(userId)
 	if err != nil {
 		log.Printf("方法dao.GetVideosByAuthorId(%v)失败:%v", userId, err)
@@ -130,7 +129,7 @@ func (videoService *VideoServiceImpl) copyVideos(result *[]Video, data *[]dao.Ta
 	return nil
 }
 
-//将video进行组装，添加想要的信息,插入从数据库中查到的数据
+// 将video进行组装，添加想要的信息,插入从数据库中查到的数据
 func (videoService *VideoServiceImpl) creatVideo(video *Video, data *dao.TableVideo, userId int64) {
 	//建立协程组，当这一组的携程全部完成后，才会结束本方法
 	var wg sync.WaitGroup

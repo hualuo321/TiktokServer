@@ -85,14 +85,16 @@ func Publish(c *gin.Context) {
 	})
 }
 
-// PublishList /publish/list/
+// 获取已发布视频
 func PublishList(c *gin.Context) {
+	// 5.2 获取查询用户 ID, 登录用户 ID
 	user_Id, _ := c.GetQuery("user_id")
 	userId, _ := strconv.ParseInt(user_Id, 10, 64)
 	log.Printf("获取到用户id:%v\n", userId)
 	curId, _ := strconv.ParseInt(c.GetString("userId"), 10, 64)
 	log.Printf("获取到当前用户id:%v\n", curId)
 	videoService := GetVideo()
+	// 5.3 根据查询用户 ID 获取其发布视频的视频列表
 	list, err := videoService.List(userId, curId)
 	if err != nil {
 		log.Printf("调用videoService.List(%v)出现错误：%v\n", userId, err)
