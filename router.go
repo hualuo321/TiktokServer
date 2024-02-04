@@ -10,7 +10,7 @@ func initRouter(r *gin.Engine) {
 	apiRouter := r.Group("/douyin")
 	// 基础 API
 	// 1.1 Gin 路由组监听用户登录事件
-	apiRouter.POST("/user/login/", controller.Login)
+	apiRouter.POST("/user/login/", controller.Login) 
 	// 2.1 Gin 路由组监听用户注册事件
 	apiRouter.POST("/user/register/", controller.Register)
 	// 3.1 Gin 路由组监听获取用户信息事件

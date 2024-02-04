@@ -19,7 +19,7 @@ type VideoListResponse struct {
 	Response
 	VideoList []service.Video `json:"video_list"`
 }
-
+ 
 // Feed /feed/
 func Feed(c *gin.Context) {
 	inputTime := c.Query("latest_time")

@@ -179,7 +179,7 @@ func (videoService *VideoServiceImpl) creatVideo(video *Video, data *dao.TableVi
 			log.Printf("方法videoService.IsFavourit(video.Id, userId) 成功")
 		}
 		wg.Done()
-	}()
+	}() 
 
 	wg.Wait()
 }

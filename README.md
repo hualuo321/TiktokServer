@@ -1,9 +1,6 @@
 - [🍻 项目流程](#-项目流程)
 	- [🥂 用户模块是怎么设计的?](#-用户模块是怎么设计的)
-	- [视频模块设计](#视频模块设计)
-	- [5. 获取已发布视频功能](#5-获取已发布视频功能)
-	- [6. 拉取视频列表到首页功能](#6-拉取视频列表到首页功能)
-	- [根据登录用户 ID 和查询用户 ID, 获取查询用户的详细信息](#根据登录用户-id-和查询用户-id-获取查询用户的详细信息)
+		- [🥂 视频模块是怎么设计的?](#-视频模块是怎么设计的)
 	- [根据视频 ID 获取视频的点赞数量](#根据视频-id-获取视频的点赞数量)
 	- [点赞视频](#点赞视频)
 	- [获取关注列表](#获取关注列表)
@@ -138,132 +135,148 @@ c.JSON(http.StatusOK, UserResponse{
 ```
 **优化设计**:
 
-🔸 jwt token: 服务端采用 token 来识别用户身份, 其中存放着部分用户信息.
+🔸 jwt token: 服务端采用 token 来识别用户身份, 其中存放着部分用户信息. 同时设置了不同的权限, 比如发布视频则必须要携带正确的 token, 确保用户登录. 而刷新 Feed 视频流则不需要强制携带 token, 非登录状态也能刷视频.
 
 🔸 数据库安全: 数据库存储用户密码时, 存储的是 sha256 加密后的密码, 避免密码明文传输.
 
-## 视频模块设计
-**发布视频**:
+### 🥂 视频模块是怎么设计的?
+
+**需求分析**:
+
+视频模块主要包括发布视频, 获取视频发布列表, 获取视频 Feed 流三个部分.
+
+**相关结构**
+
 ```go
-// 4.1 Gin 路由组监听发布视频事件
+# 视频基本信息
+type TableVideo struct {
+	Id				int64		// 自增 Id
+	AuthorId		int64		// 作者 Id
+	PlayUrl			string		// 视频地址
+	CoverUrl		string		// 封面地址
+	PublishTime 	time.Time	// 发布时间
+	Title			string		// 视频标题
+}
+
+# 视频详细信息
+type Video struct {
+	dao.TableVideo				// 视频基本信息
+	Author        	User		// 视频作者
+	FavoriteCount 	int64		// 视频被点赞量
+	CommentCount  	int64		// 视频的评论数
+	IsFavorite    	bool		// 当前用户是否点赞了该视频
+}
+```
+
+**发布视频**:
+
+```go
+# 客户端向服务端发送发布视频请求
 apiRouter.POST("/publish/action/", jwt.AuthBody(), controller.Publish)
-// 4.2 获取请求中的表单数据, 用户 ID, 视频信息
-data, err := c.FormFile("data")
+# 服务端首先从请求中获取 token 进行解析, 如果解析正确, 则将 token 中的用户信息添加到上下文中
+auth := context.Query("token")
+token, err := parseToken(auth)
+context.Set("curId", token.Id)
+context.Next()
+# 服务器从请求中获取目标用户 ID, 发布视频的数据, 发布视频的标题
 userId, _ := strconv.ParseInt(c.GetString("userId"), 10, 64)
+data, err := c.FormFile("data")
 title := c.PostForm("title")
-// 4.3 将视频数据在 FTP 文件服务器中, 通过 ffmpeg 截取视频封面
+# 根据获取到的上述信息, 发布视频到 FTP 服务器
+err = vsi.Publish(data, userId, title)
 err = dao.VideoFTP(file, videoName)
-err := Ffmpeg(f.VideoName, f.ImageName)
-// 4.4 将视频信息, 封面信息放在数据库中
+err = ftp.MyFTP.Stor(videoName+".mp4", file)
+# 在 FTP 服务器上执行 ffmpeg 命令来远程对视频截图作为封面, 同样保存在 TFP 服务器中
+imageName := uuid.NewV4().String()
+session, err := ClientSSH.NewSession()
+session.CombinedOutput("ls;/ffmpeg/path/ -ss 00:00:01 -i /video/path/" + videoName + ".mp4 -vframes 1 /images/path/" + imageName + ".jpg")
+# 将基本视频信息保存在数据库中
 err = dao.Save(videoName, imageName, userId, title)
-// 4.5 返回视频发布的响应报文
+var video TableVideo {video.PublishTime = time.Now(), ...}
+Db.Save(&video)
+# 返回响应给客户端
 c.JSON(http.StatusOK, Response{
 	StatusCode: 0,
 	StatusMsg:  "uploaded successfully",
 })
 ```
 
-##  5. <a name='-1'></a>获取已发布视频功能
+**获取视频列表**:
+
 ```go
-// 5.1 Gin 路由组监听获取已发布视频事件
+# 客户端向服务端发送获取视频列表请求
 apiRouter.GET("/publish/list/", jwt.Auth(), controller.PublishList)
-// 5.2 获取查询用户 ID, 登录用户 ID
-user_Id, _ := c.GetQuery("user_id")
-curId, _ := strconv.ParseInt(c.GetString("userId"), 10, 64)
-// 5.3 根据查询用户 ID 获取他发布视频的视频列表
-list, err := videoService.List(userId, curId)
-data, err := dao.GetVideosByAuthorId(userId)
-result := Db.Where(&TableVideo{AuthorId: authorId}).Find(&data)
-// 5.4 根据视频基础信息组装视频详细信息 (协程)
-err = videoService.copyVideos(&result, &data, curId)
-videoService.creatVideos(&video, &temp, userId)
-go func() { video.Author, err = videoService.GetUserByIdWithCurId(data.AuthorId, userId) }
-go func() { video.FavoriteCount, err = videoService.FavouriteCount(data.Id) }
-go func() { video.CommentCount, err = videoService.CountFromVideoId(data.Id) }
-go func() { video.IsFavorite, err = videoService.IsFavourite(video.Id, userId) }
-// 5.5 将获取到的视频详细信息返回给客户端
+# 服务端首先从请求中获取 token 进行解析, 如果解析正确, 则将 token 中的用户信息添加到上下文中
+auth := context.Query("token")
+token, err := parseToken(auth)
+context.Set("curId", token.Id)
+context.Next()
+# 服务器从请求中获取目标用户 ID, 当前用户 ID
+userId, _ := strconv.ParseInt(c.GetQuery("userId"), 10, 64)
+curId, _ := strconv.ParseInt(c.GetString("curId"), 10, 64)
+# 根据目标用户 ID 获取他的发布视频列表
+videoList, err := vsi.List(userId, curId)
+# 首先会从数据库中进行查询, 获取视频基本信息列表
+tableVideoList, err := dao.GetTableVideoByUserId(userId)
+Db.Where(&TableVideo{AuthorId: userId}).Find(&tableVideoList)
+# 根据视频基本信息来组装成为视频详细信息, 调用携程并发写入
+videoService.creatVideo(&video, &temp, userId)
+wg.Add(4)
+go func() {video.Author, err = vsi.GetUserByIdWithCurId(data.AuthorId, userId), wg.Done()}()
+go func() {video.FavoriteCount, err = vsi.FavouriteCount(data.Id), wg.Done()}()
+go func() {video.CommentCount, err = vsi.CountFromVideoId(data.Id), wg.Done()}()
+go func() {video.IsFavorite, err = vsi.IsFavourite(video.Id, userId)), wg.Done()}()
+wg.Wait()
+# 返回响应给客户端
 c.JSON(http.StatusOK, VideoListResponse{
 	Response:  Response{StatusCode: 0},
-	VideoList: list,
+	VideoList: videoList,
 })
 ```
 
-##  6. <a name='-1'></a>拉取视频列表到首页功能
+**获取视频 Feed 流**
+
 ```go
-// 6.1 Gin 路由组监听拉取视频列表事件
+# 客户端向服务端发送获取视频 Feed 流请求
 apiRouter.GET("/feed/", jwt.AuthWithoutLogin(), controller.Feed)
-// 6.2 获取请求中的参数信息 (最近时间, curID)
-lastTime := c.Query("latest_time")
-curId, _ := strconv.ParseInt(c.GetString("userId"), 10, 64)
-// 6.3 根据用户 ID 和最近时间拉取视频流
-feed, nextTime, err := videoService.Feed(lastTime, curId)
-tableVideos, err := dao.GetVideosByLastTime(lastTime)
-result := Db.Where("publish_time<?", lastTime).Order("publish_time desc").Limit(config.VideoCount).Find(&videos)
-// 6.4 将视频的基本信息转化为视频的详细信息
-err = videoService.copyVideos(&videos, &tableVideos, curId)
-videoService.creatVideo(&video, &temp, curId)
-go func() { video.Author, err = videoService.GetUserByIdWithCurId(data.AuthorId, userId) }
-go func() { video.FavoriteCount, err = videoService.FavouriteCount(data.Id) }
-go func() { video.CommentCount, err = videoService.CountFromVideoId(data.Id) }
-go func() { video.IsFavorite, err = videoService.IsFavourite(video.Id, userId) }
-// 6.5 返回拉取视频结果
+# 服务端首先从请求中获取 token 进行解析, 不论有无携带 token, 都能进行刷新视频首页功能
+auth := context.Query("token")
+if len(auth) == 0 {curId = "0"} break
+token, err := parseToken(auth)
+curId = token.Id
+# 服务器从请求中获取请求时间, 当前用户 ID
+inputTime := c.Query("latest_time")
+curId, _ := strconv.ParseInt(c.GetString("curId"), 10, 64)
+# 根据上述信息获取最新的视频详细信息列表
+feed, nextTime, err := videoService.Feed(lastTime, userId)
+# 首先会从数据库中进行查询, 根据请求时间获取在其之前视频基本信息列表
+tableVideos, err := dao.GetTableVideosByLastTime(lastTime)
+Db.Where("publish_time<?", lastTime).Order("publish_time desc").Limit(config.VideoCount).Find(&videos)
+# 根据视频基本信息来组装成为视频详细信息, 调用携程并发写入
+videoService.creatVideo(&video, &temp, userId)
+wg.Add(4)
+go func() {video.Author, err = vsi.GetUserByIdWithCurId(data.AuthorId, userId), wg.Done()}()
+go func() {video.FavoriteCount, err = vsi.FavouriteCount(data.Id), wg.Done()}()
+go func() {video.CommentCount, err = vsi.CountFromVideoId(data.Id), wg.Done()}()
+go func() {video.IsFavorite, err = vsi.IsFavourite(video.Id, userId)), wg.Done()}()
+wg.Wait()
+# 返回响应给客户端
 c.JSON(http.StatusOK, FeedResponse{
-    Response:  Response{StatusCode: 0},
-    VideoList: feed,
-    NextTime:  nextTime.Unix(),
+	Response:  Response{StatusCode: 0},
+	VideoList: feed,
+	NextTime:  nextTime.Unix(),	// 视频详细信息列表中的最早发布时间
 })
 ```
-## 根据登录用户 ID 和查询用户 ID, 获取查询用户的详细信息
-```go
-// 1. 根据登录用户 ID 和查询用户 ID, 获取查询用户的详细信息
-user = UserServer.GetUserByIdWithCurId(curID int64, userID int64)
-// 2. 初始化空的用户详细信息结构体
-user = User { ... }
-// 3. 获取用户基本信息, 赋值给初始化空的结构体
-tableUser = UserServer.GetTableUserById(userID int64)
-tableUser = UserDao.GetTableUserById(userID int64)
-Db.Where("id = ?", id).First(&tableUser)
-# 赋值操作
-user.name = tableUser.name ...
-// 4. 获取查询用户的关注数, 赋值给初始化空的结构体
-followCnt = FollowServer.GetFollowingCnt(userID int64)
-# 检查 Redis 中是否存在该记录
-followCnt = redis.RdbFollowing.SCard(redis.Ctx, strconv.Itoa(int(userId))).Result()
-# 如果 Redis 中存在， 则更新过期时间, 返回
-redis.RdbFollowing.Expire(redis.Ctx, strconv.Itoa(int(userId)), config.ExpireTime)
-# 如果 Redis 中不存在， 则从数据库中查找符合条件的列表
-ids = FollowDao.GetFollowingIds(userID int64)
-Db.Model(Follow{}).Where("follower_id = ?", userId).Pluck("user_id", &ids)
-# 将查询到的内容放到缓存中
-go addFollowingToRedis(userId int, ids []int64)
-followCnt = len(ids)
-user.FollowCnt = followCnt
-// 5. 获取查询用户的粉丝数, 赋值给初始化空的结构体
-followerCnt = FollowServer.GetFollowerCnt(userID int64)
-# 检查 Redis 中是否存在该记录
-followerCnt = redis.RdbFollowers.SCard(redis.Ctx, strconv.Itoa(int(userId))).Result()
-# 如果 Redis 中存在， 则更新过期时间, 返回
-redis.RdbFollowers.Expire(redis.Ctx, strconv.Itoa(int(userId)), config.ExpireTime)
-# 如果 Redis 中不存在， 则从数据库中查找符合条件的列表
-ids = FollowDao.GetFollowersIds(userID int64)
-Db.Model(Follow{}).Where("user_id = ?", userId).Where("cancel = ?", 0).Pluck("follower_id", &ids)
-# 将查询到的内容放到缓存中
-go addFollowersToRedis(int(userId), ids)
-user.FollowerCnt = followerCnt
-// 6. 判断登录使用是否关注查询用户
-isfollow = FollowServer.IsFollowing(curID int64, userID int64)
-# 检查 Redis 中是否存在该记录
-flag = redis.RdbFollowingPart.SIsMember(redis.Ctx, strconv.Itoa(int(userId)), targetId).Result()
-# 如果 Redis 中存在， 则更新过期时间, 返回
-redis.RdbFollowingPart.Expire(redis.Ctx, strconv.Itoa(int(userId)), config.ExpireTime)
-# 如果 Redis 中不存在， 则从数据库中查找关系
-relation = FellowDao.FindRelation(curID, userID)
-# 将查询到的内容放到缓存中
-go addRelationToRedis(int(curID), int(userID))
-user.isfollow = isfollow
-// 7. 返回获取到的用户信息
-return user
-```
+
+**优化设计**:
+
+🔸 在获取视频 Feed 流和获取发布视频列表时, 首先会从数据库中获取视频基本信息, 根据视频基本信息调用其他服务组装获取视频详细信息, 大量的同步调用会使得调用缓慢, 影响用户的体验. 在项目通过 go 携程并行调用其他服务来缩短信息拼装的整体时间. 
+
+🔸 在根据视频基本信息调用其他服务组装视频详细信息时, 通过引用的方式将基本信息对象嵌入到详细信息对象中, 避免了资源的拷贝操作.
+
+🔸 在视频发布功能中, 原本是在服务器进行截图, 然后通过建立两个 ftp 连接, 将视频和封面数据都上传到 FTP 服务器, 但是这样数据传输的流量会更大. 且需要两个 ftp 连接. 在项目中仅建立一个 ftp 连接传输视频数据, 通过 ssh 连接 FTP 服务器远程调用 ffmpeg 命令截图, 在 FTP 服务器上获取封面数据.
+
+🔸 在连接中, 将 ssh 和 ftp 连接均设置为长连接, 减少连接断开的情况发生.
 
 ## 根据视频 ID 获取视频的点赞数量
 ```go
