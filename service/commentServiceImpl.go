@@ -305,7 +305,7 @@ func insertRedisVideoCommentId(videoId string, commentId string) {
 		log.Println("redis save one cId - vId failed")
 	}
 }
-
+ 
 //此函数用于给一个评论赋值：评论信息+用户信息 填充
 func oneComment(comment *CommentInfo, com *dao.Comment, userId int64) {
 	var wg sync.WaitGroup

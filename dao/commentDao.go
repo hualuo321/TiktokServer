@@ -49,7 +49,7 @@ func CommentIdList(videoId int64) ([]string, error) {
 	}
 	return commentIdList, nil
 }
-
+ 
 // InsertComment
 // 2、发表评论
 func InsertComment(comment Comment) (Comment, error) {

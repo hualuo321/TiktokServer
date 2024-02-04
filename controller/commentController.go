@@ -169,7 +169,7 @@ func CommentList(c *gin.Context) {
 		return
 	}
 	log.Printf("videoId:%v", videoId)
-
+ 
 	//调用service层评论函数
 	commentService := new(service.CommentServiceImpl)
 	commentList, err := commentService.GetList(videoId, userId)

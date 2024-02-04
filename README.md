@@ -2,6 +2,7 @@
 	- [🍻 用户模块是怎么设计的?](#-用户模块是怎么设计的)
 	- [🍻 视频模块是怎么设计的?](#-视频模块是怎么设计的)
 	- [🍻 点赞模块是怎么设计的?](#-点赞模块是怎么设计的)
+	- [🍻 评论模块是怎么设计的?](#-评论模块是怎么设计的)
 - [中间件](#中间件)
 	- [JWT 鉴权模块](#jwt-鉴权模块)
 	- [ffmpeg 截图模块](#ffmpeg-截图模块)
@@ -431,6 +432,146 @@ c.JSON(http.StatusOK, GetFavouriteListResponse{
 
 🔸 当获取点赞视频列表时, 最初是向 Mysql 中查找符合条件的 videoID, 再获取获取一个完整的 video 对象, 涉及到多张表的查询, 响应速度很慢. 现在是从 Redis 中获取符合条件的 videoId, 再通过协程的方式并发获取 video 信息, 提高了响应速度.
 
+## 🍻 评论模块是怎么设计的?
+
+**需求分析**:
+
+评论模块主要包括发布评论, 删除评论, 查看评论三个部分.
+
+**相关结构**
+
+```go
+// 评论基本信息
+type TableComment struct {
+	Id          int64     // 评论id
+	UserId      int64     // 评论用户id
+	VideoId     int64     // 视频id
+	CommentText string    // 评论内容
+	CreateDate  time.Time // 评论发布的日期
+	Cancel      int32     // 取消评论为1，发布评论为0
+}
+
+// 评论扩展信息
+type Comment struct {
+	Id         	int64	// 评论 ID
+	UserInfo   User		// 发布评论的用户
+	Content    string	// 评论内容
+	CreateDate string	// 发布日期
+}
+```
+
+**发布评论**:
+
+```go
+# 客户端向服务端发送发布评论请求
+apiRouter.POST("/comment/action/", jwt.Auth(), controller.CommentAction)
+# 服务端首先从请求中获取 token 进行解析, 如果解析正确, 则将 token 中的用户信息添加到上下文中
+auth := context.Query("token")
+token, err := parseToken(auth)
+context.Set("curId", token.Id)
+context.Next()
+# 从请求中获取当前用户 ID, 视频 ID, 发布动作, 评论内容, 并对垃圾评论进行过滤
+curId, _ := strconv.ParseInt(c.GetString("curId"), 10, 64)
+videoId, err := strconv.ParseInt(c.Query("video_id"), 10, 64)
+actionType, err := strconv.ParseInt(c.Query("action_type"), 10, 32)
+content := c.Query("comment_text")
+content = util.Filter.Replace(content, '#')
+# 根据上述信息发布评论
+comment, err := csi.Send(tableComment)
+# 存储评论信息到数据库中
+tableComment, err := dao.InsertComment(tableComment)
+Db.Model(TableComment{}).Create(&tableComment)
+# 获取当前用户的结构体, 拼接到评论详细信息中
+user, err := usi.GetUserByIdWithCurId(tableComment.UserId, tableComment.UserId)
+var comemnt = Comment{}
+comment.userInfo = user
+# 将评论信息更新到 Redis 中
+insertRedisVideoCommentId(strconv.Itoa(int(comment.VideoId)), strconv.Itoa(int(commentRtn.Id)))
+redis.RdbVCid.SAdd(redis.Ctx, videoId, commentId).Result()
+redis.RdbCVid.Set(redis.Ctx, commentId, videoId, 0).Result()
+# 返回响应给客户端
+c.JSON(http.StatusOK, CommentActionResponse{
+	StatusCode: 0,
+	StatusMsg:  "send comment success",
+	Comment:    commentInfo,
+})
+```
+
+**删除评论**:
+
+```go
+# 客户端向服务端发送发布评论请求
+apiRouter.POST("/comment/action/", jwt.Auth(), controller.CommentAction)
+# 服务端首先从请求中获取 token 进行解析, 如果解析正确, 则将 token 中的用户信息添加到上下文中
+auth := context.Query("token")
+token, err := parseToken(auth)
+context.Set("curId", token.Id)
+context.Next()
+# 从请求中获取当前用户 ID, 视频 ID, 发布动作, 评论 ID
+curId, _ := strconv.ParseInt(c.GetString("curId"), 10, 64)
+videoId, err := strconv.ParseInt(c.Query("video_id"), 10, 64)
+actionType, err := strconv.ParseInt(c.Query("action_type"), 10, 32)
+commentId, err := strconv.ParseInt(c.Query("comment_id"), 10, 64)
+# 根据上述信息删除评论
+commentService.DelComment(commentId)
+# 先检查 Redis 中是否存在记录, 如果有则删除, 消息队列更新数据库
+redis.RdbCVid.Exists(redis.Ctx, strconv.FormatInt(commentId, 10)).Result()
+redis.RdbCVid.Get(redis.Ctx, strconv.FormatInt(commentId, 10)).Result()
+redis.RdbCVid.Del(redis.Ctx, strconv.FormatInt(commentId, 10)).Result()
+redis.RdbVCid.SRem(redis.Ctx, vid, strconv.FormatInt(commentId, 10)).Result()
+rabbitmq.RmqCommentDel.Publish(strconv.FormatInt(commentId, 10))
+# 如果 Redis 中不存在记录, 则直接删除数据库中数据
+dao.DeleteComment(commentId)
+Db.Model(Comment{}).Where(map[string]interface{}{"id": id, "cancel": config.ValidComment}).First(&commentInfo)
+Db.Model(Comment{}).Where("id = ?", id).Update("cancel", config.InvalidComment)
+# 返回响应给客户端
+c.JSON(http.StatusOK, CommentActionResponse{
+	StatusCode: 0,
+	StatusMsg:  "delete comment success",
+})
+```
+
+**获取评论列表**:
+
+```go
+# 客户端向服务端发送获取评论列表请求
+apiRouter.GET("/comment/list/", jwt.AuthWithoutLogin(), controller.CommentList)
+# 服务端首先从请求中获取 token 进行解析, 不论有无携带 token, 都能进行获取评论列表功能
+auth := context.Query("token")
+if len(auth) == 0 {curId = "0"} break
+token, err := parseToken(auth)
+curId = token.Id
+# 从请求中获取用户 ID, 视频 ID 等信息
+curId, _ := strconv.ParseInt(c.GetString("curId"), 10, 64)
+videoId, err := strconv.ParseInt(c.Query("video_id"), 10, 64)
+# 根据上述信息获取视频的评论列表
+commentList, err := csi.GetList(videoId, curId)
+# 首先从 Redis 中获取数据, 如果存在记录则获取
+redis.RdbVCid.SCard(redis.Ctx, strconv.FormatInt(videoId, 10)).Result()
+# 如果 Redis 中不存在记录, 则从数据库中获取评论基本信息列表, 转变为评论扩展信息列表
+commentList, err := dao.GetCommentList(videoId)
+oneComment(&commentData, &comment, userId)
+# 并更新到 Redis 中
+redis.RdbVCid.SAdd(redis.Ctx, strconv.Itoa(int(videoId)), config.DefaultRedisValue).Result()
+redis.RdbVCid.Expire(redis.Ctx, strconv.Itoa(int(videoId)), time.Duration(config.OneMonth)*time.Second).Result()
+insertRedisVideoCommentId(strconv.Itoa(int(videoId)), strconv.Itoa(int(_comment.Id)))
+redis.RdbVCid.SAdd(redis.Ctx, videoId, commentId).Result()
+redis.RdbCVid.Set(redis.Ctx, commentId, videoId, 0).Result()
+```
+
+**优化设计**:
+
+🔸 当服务器直接与 Mysql 进行交互时, 客户端的响应时间较慢, 为了减少响应时间而使用了具有高性能的 Redis 缓存. 当用户在刷评论时, 最常用到的是获取评论列表功能, 当用户进行相关操作时, 直接从 Redis 中获取数据进行响应，提高用户操作的流畅度.
+
+🔸 当大量用户同时向服务器发出请求时, 如果直接对数据库进行处理, 那么数据库压力过大可能会导致宕机. 因此在项目中采用 rabbitMQ 作为消息队列, 当需要对数据库进行操作时, 将操作放入消息队列中, 由服务器从消息队列中取消息, 不断地进行处理.
+
+🔸 当用户获取视频的评论列表时, 查询的都是当前视频的评论, 为了优化查询的性能, 将视频 ID 作为评论表的索引, 增加查询速度.
+
+```sql
+CREATE INDEX idx_video_id ON comment(video_id);
+```
+
+🔸 当对视频扩展信息进行封装时, 需要获取当前视频的评论量, 如果直接从数据库里查询会很慢, 但是采用 Redis 可以直接获取视频 key 对应 value 的长度大小作为评论的数量, 速度很快.
 
 
 # 中间件
