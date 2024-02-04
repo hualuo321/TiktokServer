@@ -60,7 +60,7 @@ func RelationAction(c *gin.Context) {
 			StatusCode: 0,
 			StatusMsg:  "OK",
 		},
-	})
+	}) 
 }
 
 // GetFollowing 处理获取关注列表请求。

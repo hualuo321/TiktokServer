@@ -3,10 +3,7 @@
 	- [🍻 视频模块是怎么设计的?](#-视频模块是怎么设计的)
 	- [🍻 点赞模块是怎么设计的?](#-点赞模块是怎么设计的)
 	- [🍻 评论模块是怎么设计的?](#-评论模块是怎么设计的)
-- [中间件](#中间件)
-	- [JWT 鉴权模块](#jwt-鉴权模块)
-	- [ffmpeg 截图模块](#ffmpeg-截图模块)
-	- [ftp 视频上传模块](#ftp-视频上传模块)
+	- [🍻 关注模块是怎么设计的?](#-关注模块是怎么设计的)
 - [相关博客](#相关博客)
 
 # 🍺 项目流程
@@ -573,69 +570,184 @@ CREATE INDEX idx_video_id ON comment(video_id);
 
 🔸 当对视频扩展信息进行封装时, 需要获取当前视频的评论量, 如果直接从数据库里查询会很慢, 但是采用 Redis 可以直接获取视频 key 对应 value 的长度大小作为评论的数量, 速度很快.
 
+## 🍻 关注模块是怎么设计的?
 
-# 中间件
-## JWT 鉴权模块
-**Auth()**
-```go
-// 首先会获取token，检查用户携带的token是否正确，
-auth := context.Query("token")
-token, err := parseToken(auth)
-// 如果token正确，则将用登录者的用户ID放入上下文中，并放行
-context.Set("userId", token.Id)
-context.Next()
-// 如果token不正确，则终止
-context.Abort()
-```
-**AuthWithoutLogin()**
-```go
-// 在未登录情况下，如果携带token，则会解析token检查是否正确
-auth := context.Query("token")
-token, err := parseToken(auth)
-// 如果没有携带token，则userID默认为0，并放行
-userId = "0"
-// 如果token正确，则将用登录者的userID放入上下文中，并放行
-context.Set("userId", userId)
-context.Next()
-```
-****
+**需求分析**:
 
-## ffmpeg 截图模块
-**结构体**
+关注模块主要包括关注操作, 取关操作, 获取关注列表, 获取粉丝列表四个部分.
+
+**相关结构**:
+
 ```go
-// 存放视频名和封面名
-type Ffmsg struct {
-	VideoName string
-	ImageName string
+# 关注信息
+type Follow struct {
+	Id         	int64 	// 自增 ID
+	UserId     	int64	// 发起关注方
+	FollowerId 	int64	// 被关注方
+	Cancel     	int8	// 是否关注
 }
 ```
-**Init()**
+
+**关注操作**
+
 ```go
-// 创建一个 ssh 连接对象，连接到服务器
-ClientSSH, err = ssh.Dial("tcp", addr, SSHconfig)
-// 创建一个管道，用于存放视频名，封面名信息
-Ffchan = make(chan Ffmsg, config.MaxMsgCount)
-// 调用协程，从管道中取出一个数据进行处理，并且保持长连接
-go dispatcher()
-go keepAlive()
-// dispatcher 处理，就是循环从管道取数据，截取封面
-for ffmsg := range Ffchan {
-    go func(f Ffmsg) { err := Ffmpeg(f.VideoName, f.ImageName) }(ffmsg)
-}
-// 通过远程调用ffmpeg命令来截图, 截取的图放在服务器中的指定路径
-session, err := ClientSSH.NewSession()
-combo, err := session.CombinedOutput("ls;/usr/.../ffmpeg -ss 00:00:01 -i /video_path/" + videoName + ".mp4 -vframes 1 /images_path/" + imageName + ".jpg")
+# 客户端向服务端发送关注请求
+apiRouter.POST("/relation/action/", jwt.Auth(), controller.RelationAction)
+# 服务端从请求中获取 token 进行解析, 如果解析正确, 则将 token 中的用户信息添加到上下文中
+auth := context.Query("token")
+token, err := parseToken(auth)
+context.Set("curId", token.Id)
+context.Next()
+# 服务端从请求中获取当前用户 ID, 目标用户 ID, 关注类型
+curId, err1 := strconv.ParseInt(c.GetString("curId"), 10, 64)
+userId, err2 := strconv.ParseInt(c.Query("userId"), 10, 64)
+actionType, err3 := strconv.ParseInt(c.Query("action_type"), 10, 64)
+# 服务端根据上述参数进行关注操作
+go fsi.AddFollowRelation(curId, userId)
+# 接着更新 Redis 缓存中的内容
+updateRedisWithAdd(userId, targetId)
+redis.RdbFollowers.SCard(redis.Ctx, userId).Result()
+redis.RdbFollowers.SAdd(redis.Ctx, userId, curId)
+redis.RdbFollowers.Expire(redis.Ctx, userId, config.ExpireTime)
+redis.RdbFollowing.SCard(redis.Ctx, curId).Result()
+redis.RdbFollowing.SAdd(redis.Ctx, curId, userId)
+redis.RdbFollowing.Expire(redis.Ctx, curId, config.ExpireTime)
+# 将更新数据库操作写入消息队列
+rabbitmq.RmqFollowAdd.Publish(sb.String())
+# 服务端向客户端返回结果
+c.JSON(http.StatusOK, RelationActionResp{
+	Response{
+		StatusCode: 0,
+		StatusMsg:  "OK",
+	},
+}) 
 ```
 
-## ftp 视频上传模块
-**InitFTP()**
+**取关操作**:
+
 ```go
-// 初始化一个ftp连接对象
-MyFTP, err = goftp.Connect(config.ConConfig)
-// 登录上tcp服务器
-err = MyFTP.Login(config.FtpUser, config.FtpPsw)
-// 登录成功后维持长连接
-go keepAlive()
+# 客户端向服务端发送取关请求
+apiRouter.POST("/relation/action/", jwt.Auth(), controller.RelationAction)
+# 服务端从请求中获取 token 进行解析, 如果解析正确, 则将 token 中的用户信息添加到上下文中
+auth := context.Query("token")
+token, err := parseToken(auth)
+context.Set("curId", token.Id)
+context.Next()
+# 服务端从请求中获取当前用户 ID, 目标用户 ID, 关注类型
+curId, err1 := strconv.ParseInt(c.GetString("curId"), 10, 64)
+userId, err2 := strconv.ParseInt(c.Query("userId"), 10, 64)
+actionType, err3 := strconv.ParseInt(c.Query("action_type"), 10, 64)
+# 服务端根据上述参数进行关注操作
+go fsi.DeleteFollowRelation(curId, uerId)
+# 接着更新 Redis 缓存中的内容
+updateRedisWithAdd(userId, targetId)
+redis.RdbFollowers.SCard(redis.Ctx, userId).Result()
+redis.RdbFollowers.SRem(redis.Ctx, userId, curId)
+redis.RdbFollowers.Expire(redis.Ctx, userId, config.ExpireTime)
+redis.RdbFollowing.SCard(redis.Ctx, curId).Result()
+redis.RdbFollowing.SRem(redis.Ctx, curId, userId)
+redis.RdbFollowing.Expire(redis.Ctx, curId, config.ExpireTime)
+# 将更新数据库操作写入消息队列
+rabbitmq.RmqFollowDel.Publish(sb.String())
+# 服务端向客户端返回结果
+c.JSON(http.StatusOK, RelationActionResp{
+	Response{
+		StatusCode: 0,
+		StatusMsg:  "OK",
+	},
+}) 
+```
+
+**获取关注列表**:
+
+```go
+# 客户端向服务端发送获取关注列表请求
+apiRouter.GET("/relation/follow/list/", jwt.Auth(), controller.GetFollowing)
+# 服务端从请求中获取 token 进行解析, 如果解析正确, 则将 token 中的用户信息添加到上下文中
+auth := context.Query("token")
+token, err := parseToken(auth)
+context.Set("curId", token.Id)
+context.Next()
+# 服务端从请求中获取目标用户 ID
+userId, err2 := strconv.ParseInt(c.Query("userId"), 10, 64)
+# 利用上述参数尝试获取目标用户所关注的用户
+userList = fsi.GetFollowing(userId)
+# 首先会查看缓存中是否有记录, 如果有则获取数据
+redis.RdbFollowers.SCard(redis.Ctx, followingIdStr).Result()
+userIdList = redis.RdbFollowing.SMembers(redis.Ctx, userId).Result()
+# 根据这些 userIdList 来利用协程并发获取数据, 转化为 userList
+userList := make([]User, len)
+go usi.GetUserByIdWithCurId(userList[i], userId)
+- followerCount, err := fsi.GetFollowerCnt(userId)		// 从 Redis / Mysql 中获取
+- isfollow, err := fsi.IsFollowing(curId, userId)			// 从 Redis / Mysql 中获取
+- totalFavorited, err := lsi.TotalFavourite(userId)		// 从 Redis / Mysql 中获取
+- favoritedCount, err := lsi.FavouriteVideoCount(userId)	// 从 Redis / Mysql 中获取
+# 如果缓存中没有, 则从数据库中获取数据, 更新到缓存中
+userIdList = dao.GetFollowingIds(userId)
+Db.Model(Follow{}).Where("follower_id = ?", userId).Pluck("user_id", &ids)
+go setRedisFollowing(userId, userList)
+redis.RdbFollowing.SAdd(redis.Ctx, userId, DefaultRedisValue)
+redis.RdbFollowing.Expire(redis.Ctx, followingIdStr, config.ExpireTime)
+redis.RdbFollowing.SAdd(redis.Ctx, userId, userList[i].id)
+# 服务器向客户端返回数据
+c.JSON(http.StatusOK, FollowingResp{
+	UserList: userList,
+	Response: Response{
+		StatusCode: 0,
+		StatusMsg:  "OK",
+	},
+})
+```
+
+**获取粉丝列表**:
+
+```go
+# 客户端向服务端发送获取关注列表请求
+apiRouter.GET("/relation/follower/list", jwt.Auth(), controller.GetFollowers)
+# 服务端从请求中获取 token 进行解析, 如果解析正确, 则将 token 中的用户信息添加到上下文中
+auth := context.Query("token")
+token, err := parseToken(auth)
+context.Set("curId", token.Id)
+context.Next()
+# 服务端从请求中获取目标用户 ID
+userId, err2 := strconv.ParseInt(c.Query("userId"), 10, 64)
+# 利用上述参数尝试获取目标用户所关注的用户
+userList = fsi.GetFollowers(userId)
+# 首先会查看缓存中是否有记录, 如果有则获取数据
+redis.RdbFollowers.SCard(redis.Ctx, followersIdStr).Result()
+userIdList = redis.RdbFollowers.SMembers(redis.Ctx, userId).Result()
+# 根据这些 userIdList 来利用协程并发获取数据, 转化为 userList
+userList := make([]User, len)
+go usi.GetUserByIdWithCurId(userList[i], userId)
+- followerCount, err := fsi.GetFollowerCnt(userId)		// 从 Redis / Mysql 中获取
+- isfollow, err := fsi.IsFollowing(curId, userId)		// 从 Redis / Mysql 中获取
+- totalFavorited, err := lsi.TotalFavourite(userId)		// 从 Redis / Mysql 中获取
+- favoritedCount, err := lsi.FavouriteVideoCount(userId)// 从 Redis / Mysql 中获取
+# 如果缓存中没有, 则从数据库中获取数据, 更新到缓存中
+userIdList = dao.GetFollowersIds(userId)
+Db.Model(Follow{}).Where("user_id = ?", userId).Where("cancel = ?", 0).Pluck("follower_id", &ids)
+go setRedisFollowers(userId, userList)
+redis.RdbFollowers.SAdd(redis.Ctx, userId, DefaultRedisValue)
+redis.RdbFollowers.Expire(redis.Ctx, userId, config.ExpireTime)
+redis.RdbFollowers.SAdd(redis.Ctx, userId, userList[i])
+# 服务器向客户端返回数据
+c.JSON(http.StatusOK, FollowersResp{
+	Response: Response{
+		StatusCode: 0,
+		StatusMsg:  "OK",
+	},
+	UserList: users,
+})
+```
+
+**优化设计**:
+
+🔸 当服务器直接与 Mysql 进行交互时, 客户端的响应时间较慢, 为了减少响应时间而使用了具有高性能的 Redis 缓存. 当用户在获取关注列表时, 直接从 Redis 中获取数据进行响应，提高用户操作的流畅度.
+🔸 当大量用户同时向服务器发出请求时, 如果直接对数据库进行处理, 那么数据库压力过大可能会导致宕机. 因此在项目中采用 rabbitMQ 作为消息队列, 当需要对数据库进行操作时, 将操作放入消息队列中, 由服务器从消息队列中取消息, 不断地进行处理.
+🔸 考虑到关注取关操作时, 会先判断用户双方是否关注过, 涉及到当前用户 ID 和目标用户 ID, 所以可以采用复合索引来提升搜索的速度.
+
+```sql
+CREATE INDEX cur_id_to_target_id_idx ON follows(cur_id, target_id) USING BTREE;
 ```
 
 # 相关博客

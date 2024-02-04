@@ -273,7 +273,7 @@ func (f *FollowServiceImp) getFollowing(userId int64) ([]User, error) {
 		return nil, err
 	}
 	// 没得关注者
-	if nil == ids {
+	if nil == ids { 
 		return nil, nil
 	}
 	// 根据每个id来查询用户信息。
@@ -503,16 +503,19 @@ func setRedisFollowers(userId int64, users []User) {
 	// 设置过期时间
 	redis.RdbFollowers.Expire(redis.Ctx, followersIdStr, config.ExpireTime)
 	for i, user := range users {
+		// 目标用户添加粉丝 ID
 		redis.RdbFollowers.SAdd(redis.Ctx, followersIdStr, user.Id)
 
 		userUserIdStr := strconv.Itoa(int(user.Id))
+		// 粉丝关注了目标用户
 		redis.RdbFollowingPart.SAdd(redis.Ctx, userUserIdStr, userId)
 		redis.RdbFollowingPart.SAdd(redis.Ctx, userUserIdStr, -1)
 		// 随机更新过期时间
 		redis.RdbFollowingPart.Expire(redis.Ctx, userUserIdStr, config.ExpireTime+
 			time.Duration((i%10)<<8))
-
+		// 如果粉丝被目标用户关注
 		if user.IsFollow {
+			// 目标用户关注了粉丝
 			redis.RdbFollowingPart.SAdd(redis.Ctx, followersIdStr, user.Id)
 			redis.RdbFollowingPart.SAdd(redis.Ctx, followersIdStr, -1)
 			redis.RdbFollowingPart.Expire(redis.Ctx, followersIdStr, config.ExpireTime+
