@@ -1,160 +1,149 @@
-- [常用结构](#常用结构)
-- [功能介绍](#功能介绍)
-	- [用户登录功能](#用户登录功能)
-	- [用户注册功能](#用户注册功能)
-	- [3. 获取用户信息功能](#3-获取用户信息功能)
-	- [4. 发布视频功能](#4-发布视频功能)
+- [🍻 项目流程](#-项目流程)
+	- [🥂 用户模块是怎么设计的?](#-用户模块是怎么设计的)
+	- [视频模块设计](#视频模块设计)
 	- [5. 获取已发布视频功能](#5-获取已发布视频功能)
 	- [6. 拉取视频列表到首页功能](#6-拉取视频列表到首页功能)
-	- [](#)
-	- [7. 根据登录用户 ID 和查询用户 ID, 获取查询用户的详细信息](#7-根据登录用户-id-和查询用户-id-获取查询用户的详细信息)
-	- [8. 根据视频 ID 获取视频的点赞数量](#8-根据视频-id-获取视频的点赞数量)
-	- [9. 点赞视频](#9-点赞视频)
+	- [根据登录用户 ID 和查询用户 ID, 获取查询用户的详细信息](#根据登录用户-id-和查询用户-id-获取查询用户的详细信息)
+	- [根据视频 ID 获取视频的点赞数量](#根据视频-id-获取视频的点赞数量)
+	- [点赞视频](#点赞视频)
+	- [获取关注列表](#获取关注列表)
+	- [获取粉丝列表](#获取粉丝列表)
+	- [关注用户](#关注用户)
 - [中间件](#中间件)
 	- [JWT 鉴权模块](#jwt-鉴权模块)
 	- [ffmpeg 截图模块](#ffmpeg-截图模块)
-- [相关知识](#相关知识)
+	- [ftp 视频上传模块](#ftp-视频上传模块)
+- [相关博客](#相关博客)
 
+# 🍻 项目流程
+## 🥂 用户模块是怎么设计的?
+**需求分析**:
 
-# 常用结构
-**用户结构**
+用户模块主要包括用户注册, 用户登录, 获取用户信息三个部分.
+
+**相关结构**:
+
 ```go
-// 用户基础信息结构体
+// 用户基本信息
 type TableUser struct {
-	Id       int64			// 用户 ID
-	Name     string			// 用户名
-	Password string			// 密码
+	Id       		int64			// 自增 Id
+	Name     		string			// 用户名
+	Password 		string			// 密码
 }
 
-// 用户详细信息信息结构体
+// 用户详细信息
 type User struct {
-	Id             int64  `json:"id,omitempty"` 			// 用户 ID
-	Name           string `json:"name,omitempty"`			// 用户名
-	FollowCount    int64  `json:"follow_count"` 			// 查询对象的关注数
-	FollowerCount  int64  `json:"follower_count"`			// 查询对象的粉丝数
-	IsFollow       bool   `json:"is_follow"`     			// 登录用户是否关注该查询对象
-	TotalFavorited int64  `json:"total_favorited,omitempty"`// 查询用户的总被点赞量
-	FavoriteCount  int64  `json:"favorite_count,omitempty"`	// 查询用户点赞了多少其他视频
-}
-
-// 视频表结构体
-type TableVideo struct {
-	Id          int64 `json:"id"`		// 视频 ID
-	AuthorId    int64			// 作者 ID
-	PlayUrl     string `json:"play_url"`	// 视频存放地址
-	CoverUrl    string `json:"cover_url"`	// 封面存放地址
-	PublishTime time.Time			// 发布事件
-	Title       string `json:"title"` 	// 视频名称
-}
-
-// 视频信息结构体
-type Video struct {
-	dao.TableVideo
-	Author        User  `json:"author"`				// 作者
-	FavoriteCount int64 `json:"favorite_count"`		// 点赞量
-	CommentCount  int64 `json:"comment_count"`		// 评论量
-	IsFavorite    bool  `json:"is_favorite"`		// 登录用户对该视频是否点赞
+	Id				int64			// 自增 Id
+	Name			string			// 用户名
+	FollowCount		int64			// 目标用户的关注数
+	FollowerCount	int64			// 目标用户的粉丝数
+	IsFollow		bool			// 当前用户是否关注了目标用户
+	TotalFavorited	int64			// 目标用户发布视频总的被点赞量
+	FavoriteCount	int64			// 目标用户点赞过多少视频
 }
 ```
 
-**响应报文**
+**用户注册**: 
+
 ```go
-// 基础响应 (状态码, 状态信息)
-type Response struct {
-	StatusCode int32  `json:"status_code"`
-	StatusMsg  string `json:"status_msg,omitempty"`
-}
-
-// 用户登录响应
-type UserLoginResponse struct {
-	Response
-	UserId int64  `json:"user_id,omitempty"`
-	Token  string `json:"token"`
-}
-
-// 用户信息响应
-type UserResponse struct {
-	Response
-	User service.User `json:"user"`
-}
-
-// 点赞响应
-type likeResponse struct {
-	StatusCode int32  `json:"status_code"`
-	StatusMsg  string `json:"status_msg,omitempty"`
-}
-
-// 获取点赞列表响应
-type GetFavouriteListResponse struct {
-	StatusCode int32           `json:"status_code"`
-	StatusMsg  string          `json:"status_msg,omitempty"`
-	VideoList  []service.Video `json:"video_list,omitempty"`
-}
-```
-
-# 功能介绍
-
-## 用户登录功能
-```go
-// 1.1 Gin 路由组监听用户登录事件
-apiRouter.POST("/user/login/", controller.Login)
-// 1.2 从 URL 中获取用户名和密码
-username := c.Query("username")
-password := c.Query("password")
-// 1.3 将密码转换为 sha256 处理后的加密密码
-encoderPassword := service.EnCoder(password)
-// 1.4 通过用户名找到用户信息对象 User(用户ID, 用户名, 密码)
-u := usi.GetTableUserByUsername(username)
-// 1.5 将数据库中的加密密码与用户提供的加密密码比对, 看是否一致
-if encoderPassword == u.Password { ... }
-// 1.6 根据用户名生成一个 token 字符串, 其中包含着一些用户信息 (用户名, 用户ID, 过期时间...)
-token := service.GenerateToken(username)
-// 1.7 生成一个登录响应返回给客户端
-c.JSON(http.StatusOK, UserLoginResponse{
-	Response: Response{StatusCode: 0},
-	UserId: u.Id,
-	Token: token,
-})
-```
-
-## 用户注册功能
-```go
-// 2.1 Gin 路由组监听用户注册事件
+# 客户端向服务端发送注册请求
 apiRouter.POST("/user/register/", controller.Register)
-// 2.2 从 URL 中获取用户名和密码
+# 服务端从请求中获取用户名, 密码
 username := c.Query("username")
 password := c.Query("password")
-// 2.3 根据用户名从数据库里搜索, 判断该用户是否已存在
-u := usi.GetTableUserByUsername(username)
-if username == u.Name { ... }
-// 2.4 将新用户的信息添加到数据库中, 其中密码存储的是加密密码
-usi.InsertTableUser(&newUser)
-// 2.5 根据用户名生成一个 token 字符串, 其中包含着一些用户信息 (用户名, 用户ID, 过期时间...)
-token := service.GenerateToken(username)
-// 2.6 生成一个用户登录响应报文返回给客户端 (注册好自动登录)
+# 服务端会先从数据库中判断该账号是否存在, 如果存在则退出
+tableUser := usi.GetTableUserByUsername(username)
+if username == tableUser.Name {
+	c.JSON(http.StatusOK, UserLoginResponse{
+		Response: Response{StatusCode: 1, StatusMsg: "User already exist"},
+	})
+# 如果不存在, 则创建用户基本信息对象, 并为密码进行加密存储
+tableUser := dao.TableUser{
+	Name:     username,
+	Password: usi.EnCoder(password),
+}
+# 将用户信息存入数据库
+usi.InsertTableUser(&tableUser)
+Db.Create(&tableUser)
+# 根据用户信息创建一个 token
+token := usi.GenerateToken(userId, username)
+# 返回响应给客户端
 c.JSON(http.StatusOK, UserLoginResponse{
 	Response: Response{StatusCode: 0},
-	UserId: u.Id,
-	Token: token,
+	UserId:   user.Id,
+	Token:    token,
 })
 ```
 
-##  3. <a name='-1'></a>获取用户信息功能
+**用户登录**:
+
 ```go
-// 3.1 Gin 路由组监听获取用户信息事件
+# 客户端向服务端发送登录请求
+apiRouter.POST("/user/login/", controller.Login)
+# 服务端从请求中获取用户名, 密码, 并将密码进行加密处理
+username := c.Query("username")
+password := c.Query("password")
+encoderPassword := usi.EnCoder(password)
+# 服务端从数据库中获取该账户信息, 进行比对, 如果一致则生成一个 token
+tableUser = usi.GetTableUserByUsername(username)
+if encoderPassword == tableUser.Password {
+	token := service.GenerateToken(username)
+}
+# 返回响应给客户端
+c.JSON(http.StatusOK, UserLoginResponse{
+	Response: Response{StatusCode: 0},
+	UserId:   tableUser.Id,
+	Token:    token,
+}) 
+```
+
+**获取用户信息**:
+
+```go
+# 客户端向服务端发送获取用户信息请求
 apiRouter.GET("/user/", jwt.Auth(), controller.UserInfo)
-// 3.2 从 URL 中获取用户 ID
-user_id := c.Query("user_id")
-// 3.3 根据用户 ID 从数据库中获取用户信息对象
-u, err := usi.GetUserById(id)
-// 3.4 返回用户信息响应报文
+# 服务端首先从请求中获取 token 进行解析, 如果解析正确, 则将 token 中的用户信息添加到上下文中, 表示当前登录用户
+auth := context.Query("token")
+token, err := parseToken(auth)
+context.Set("curId", token.Id)
+context.Next()
+# 服务端从请求中获取目标用户 ID
+userId := c.Query("user_id")
+# 根据目标用户 ID 从数据库中获取用户的各项数据, 组装得到用户详细信息
+user, err := usi.GetUserById(userId)
+tableUser, err := dao.GetTableUserById(userId)
+followCount, err := fsi.GetFollowingCnt(userId)			// 从 Redis / Mysql 中获取
+- cnt, err := redis.RdbFollowing.SCard(redis.Ctx, strconv.Itoa(int(userId))).Result()
+- redis.RdbFollowing.Expire(redis.Ctx, strconv.Itoa(int(userId)), config.ExpireTime)
+- ids, err := dao.GetFollowingIds(userId)
+- go addFollowingToRedis(int(userId), ids)
+followerCount, err := fsi.GetFollowerCnt(userId)		// 从 Redis / Mysql 中获取
+isfollow, err := fsi.IsFollowing(curId, userId)			// 从 Redis / Mysql 中获取
+totalFavorited, err := lsi.TotalFavourite(userId)		// 从 Redis / Mysql 中获取
+favoritedCount, err := lsi.FavouriteVideoCount(userId)	// 从 Redis / Mysql 中获取
+user = User{
+	Id:             userId,
+	Name:           tableUser.Name,
+	FollowCount:    followCount,
+	FollowerCount:  followerCount,
+	IsFollow:       isfollow,
+	TotalFavorited: totalFavorited,
+	FavoriteCount:  favoritedCount,
+}
+# 返回响应给客户端
 c.JSON(http.StatusOK, UserResponse{
 	Response: Response{StatusCode: 0},
-	User: u,
+	User:     user,
 })
 ```
+**优化设计**:
 
-##  4. <a name='-1'></a>发布视频功能
+🔸 jwt token: 服务端采用 token 来识别用户身份, 其中存放着部分用户信息.
+
+🔸 数据库安全: 数据库存储用户密码时, 存储的是 sha256 加密后的密码, 避免密码明文传输.
+
+## 视频模块设计
+**发布视频**:
 ```go
 // 4.1 Gin 路由组监听发布视频事件
 apiRouter.POST("/publish/action/", jwt.AuthBody(), controller.Publish)
@@ -224,10 +213,7 @@ c.JSON(http.StatusOK, FeedResponse{
     NextTime:  nextTime.Unix(),
 })
 ```
-
-## 
-
-##  7. <a name='IDID'></a>根据登录用户 ID 和查询用户 ID, 获取查询用户的详细信息
+## 根据登录用户 ID 和查询用户 ID, 获取查询用户的详细信息
 ```go
 // 1. 根据登录用户 ID 和查询用户 ID, 获取查询用户的详细信息
 user = UserServer.GetUserByIdWithCurId(curID int64, userID int64)
@@ -279,7 +265,7 @@ user.isfollow = isfollow
 return user
 ```
 
-##  8. <a name='ID'></a>根据视频 ID 获取视频的点赞数量
+## 根据视频 ID 获取视频的点赞数量
 ```go
 favoriteCnt = VideoServer.FavouriteCount(tableVideo.ID)
 # 判断 Redis 中是否存在记录
@@ -298,7 +284,7 @@ redis.RdbLikeVideoId.SAdd(redis.Ctx, strVideoId, likeUserId)
 count = redis.RdbLikeVideoId.SCard(redis.Ctx, strVideoId).Result()
 ```
 
-##  9. <a name='-1'></a>点赞视频
+## 点赞视频
 ```go
 // Gin 路由组监听点赞视频事件
 apiRouter.POST("/favorite/action/", jwt.Auth(), controller.FavoriteAction)
@@ -325,7 +311,76 @@ _, err1 := redis.RdbLikeUserId.SAdd(redis.Ctx, strUserId, likeVideoId).Result()
 // 将数据库更新的操作放入消息队列
 ```
 
+## 获取关注列表
+```go
+// 通过路由组来鉴权并调用GetFollowing函数，获取当前用户的关注列表
+apiRouter.GET("/relation/follow/list/", jwt.Auth(), controller.GetFollowing)
+// 解析上下文中的登录的userId
+userId, err := strconv.ParseInt(c.Query("user_id"), 10, 64)
+// 获取关注列表
+users, err := fsi.GetFollowing(userId)
+err := dao.Db.Raw(..., userId).Scan(&users)
+// 输出关注列表信息
+c.JSON(http.StatusOK, FollowingResp{
+    UserList: users,
+    Response: Response{
+        StatusCode: 0,
+        StatusMsg:  "OK",
+    },
+})
+```
 
+## 获取粉丝列表
+```go
+// 通过路由组来鉴权并调用GetFollowers函数，获取当前用户的粉丝列表
+apiRouter.GET("/relation/follower/list", jwt.Auth(), controller.GetFollowers)
+// 解析上下文中的登录的userId
+userId, err := strconv.ParseInt(c.Query("user_id"), 10, 64)
+// 获取粉丝列表
+users, err := fsi.GetFollowers(userId)
+err := dao.Db.Raw(..., userId).Scan(&users)
+// 输出粉丝列表信息
+c.JSON(http.StatusOK, FollowersResp{
+    Response: Response{
+        StatusCode: 0,
+        StatusMsg:  "OK",
+    },
+    UserList: users,
+})
+```
+
+## 关注用户
+```go
+// 通过路由组来鉴权并调用RelationAction函数，实现关注功能
+apiRouter.POST("/relation/action/", jwt.Auth(), controller.RelationAction)
+// 获取当前用户和目标用户的ID，以及是进行关注还是取关
+userId, err1 := strconv.ParseInt(c.GetString("userId"), 10, 64)
+toUserId, err2 := strconv.ParseInt(c.Query("to_user_id"), 10, 64)
+actionType, err3 := strconv.ParseInt(c.Query("action_type"), 10, 64)
+// 进行关注
+go fsi.AddFollowRelation(userId, toUserId)
+// 将当前用户，目标用户ID字符串添加到消息队列，后台从中取元素写入数据库
+rabbitmq.RmqFollowAdd.Publish(sb.String())
+rabbitmq.InitFollowRabbitMQ()
+go RmqFollowAdd.Consumer()
+go f.consumerFollowAdd(msgs)
+err := dao.Db.Raw(sql).Scan(nil)
+// 更新 redis 中的数据
+updateRedisWithAdd(userId, targetId)
+// 将curId添加入targetId的粉丝列表，设置过期时间
+redis.RdbFollowers.SAdd(redis.Ctx, targetIdStr, userId)
+redis.RdbFollowers.Expire(redis.Ctx, targetIdStr, config.ExpireTime)
+// 将targetID加入到curId的关注列表，设置过期时间
+redis.RdbFollowing.SAdd(redis.Ctx, followingUserIdStr, targetId)
+redis.RdbFollowing.Expire(redis.Ctx, followingUserIdStr, config.ExpireTime)
+// 关注成功
+c.JSON(http.StatusOK, RelationActionResp{
+    Response{
+        StatusCode: 0,
+        StatusMsg:  "OK",
+    },
+})
+```
 
 
 
@@ -384,7 +439,18 @@ session, err := ClientSSH.NewSession()
 combo, err := session.CombinedOutput("ls;/usr/.../ffmpeg -ss 00:00:01 -i /video_path/" + videoName + ".mp4 -vframes 1 /images_path/" + imageName + ".jpg")
 ```
 
+## ftp 视频上传模块
+**InitFTP()**
+```go
+// 初始化一个ftp连接对象
+MyFTP, err = goftp.Connect(config.ConConfig)
+// 登录上tcp服务器
+err = MyFTP.Login(config.FtpUser, config.FtpPsw)
+// 登录成功后维持长连接
+go keepAlive()
+```
 
-
-# 相关知识
+# 相关博客
 [JWT token](https://www.ruanyifeng.com/blog/2018/07/json_web_token-tutorial.html)
+[Nginx](https://juejin.cn/post/6844904129987526663)
+[正向代理 / 反向代理](https://juejin.cn/post/6844904129987526663)

@@ -31,3 +31,4 @@ func keepAlive() {
 	time.Sleep(time.Duration(config.HeartbeatTime) * time.Second)
 	MyFTP.Noop()
 }
+

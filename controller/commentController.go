@@ -31,8 +31,8 @@ type CommentActionResponse struct {
 // 发表 or 删除评论 comment/action/
 func CommentAction(c *gin.Context) {
 	log.Println("CommentController-Comment_Action: running") //函数已运行
-	//获取userId
-	id, _ := c.Get("userId")
+	// 获取 userId
+	user_id, _ := c.Get("userId")
 	userid, _ := id.(string)
 	userId, err := strconv.ParseInt(userid, 10, 64)
 	log.Printf("err:%v", err)

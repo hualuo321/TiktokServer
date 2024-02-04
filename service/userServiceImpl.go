@@ -148,7 +148,7 @@ func (usi *UserServiceImpl) GetUserByIdWithCurId(id int64, curId int64) (User, e
 	return user, nil
 }
 
-// 根据用户名生成一个 token
+// 根据用户名生成一个 token  
 func GenerateToken(username string) string {
 	u := UserService.GetTableUserByUsername(new(UserServiceImpl), username)
 	fmt.Printf("generatetoken: %v\n", u)

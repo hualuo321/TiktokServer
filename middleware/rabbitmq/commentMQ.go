@@ -10,20 +10,20 @@ import (
 
 type CommentMQ struct {
 	RabbitMQ
-	channel   *amqp.Channel
-	queueName string
-	exchange  string
-	key       string
+	channel   *amqp.Channel	// 消息队列通道
+	queueName string		// 队列名称
+	exchange  string		// 交换机名称
+	key       string		// 路由键
 }
 
-// NewCommentRabbitMQ 获取CommentMQ的对应队列。
+// 获取CommentMQ的对应队列
 func NewCommentRabbitMQ(queueName string) *CommentMQ {
 	commentMQ := &CommentMQ{
 		RabbitMQ:  *Rmq,
-		queueName: queueName,
+		queueName: queueName,	// 设置队列名称
 	}
 
-	cha, err := commentMQ.conn.Channel()
+	cha, err := commentMQ.conn.Channel()	// 创建 RabbitMQ 通道
 	commentMQ.channel = cha
 	Rmq.failOnErr(err, "获取通道失败")
 	return commentMQ
@@ -31,29 +31,24 @@ func NewCommentRabbitMQ(queueName string) *CommentMQ {
 
 // Publish Comment的发布配置。
 func (c *CommentMQ) Publish(message string) {
-
+	// 声明消息要发送到的队列
 	_, err := c.channel.QueueDeclare(
-		c.queueName,
-		//是否持久化
-		false,
-		//是否为自动删除
-		false,
-		//是否具有排他性
-		false,
-		//是否阻塞
-		false,
-		//额外属性
-		nil,
+		c.queueName,	// 队列名称
+		false,			// 是否持久化
+		false,			// 是否为自动删除
+		false,			// 是否具有排他性
+		false,			// 是否阻塞
+		nil,			// 额外属性
 	)
 	if err != nil {
 		panic(err)
 	}
-
+	// 将消息发布到声明的队列
 	err1 := c.channel.Publish(
-		c.exchange,
-		c.queueName,
-		false,
-		false,
+		c.exchange,		// 交换机名称
+		c.queueName,	// 队列名称
+		false,			// 是否强制
+		false,			// 是否立即
 		amqp.Publishing{
 			ContentType: "text/plain",
 			Body:        []byte(message),

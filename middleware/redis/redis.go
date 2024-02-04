@@ -26,12 +26,12 @@ func InitRedis() {
 	RdbFollowing = redis.NewClient(&redis.Options{
 		Addr:     "106.14.75.229:6379",
 		Password: "tiktok",
-		DB:       1, // 关注列表信息信息存入 DB1.
+		DB:       1, // 关注列表信息存入 DB1.
 	})
 	RdbFollowingPart = redis.NewClient(&redis.Options{
 		Addr:     "106.14.75.229:6379",
 		Password: "tiktok",
-		DB:       3, // 当前用户是否关注了自己粉丝信息存入 DB1.
+		DB:       3, // 当前用户是否关注了自己，粉丝信息存入 DB1.
 	})
 
 	RdbLikeUserId = redis.NewClient(&redis.Options{

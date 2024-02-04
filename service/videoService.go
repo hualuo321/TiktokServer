@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-type Video struct {
+type Video struct { 
 	dao.TableVideo
 	Author        User  `json:"author"`
 	FavoriteCount int64 `json:"favorite_count"`

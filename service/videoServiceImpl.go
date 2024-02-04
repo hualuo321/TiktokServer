@@ -136,7 +136,7 @@ func (videoService *VideoServiceImpl) creatVideo(video *Video, data *dao.TableVi
 	wg.Add(4)
 	var err error
 	video.TableVideo = *data
-	//插入Author，这里需要将视频的发布者和当前登录的用户传入，才能正确获得isFollow，
+	//插入Author，登录的用户这里需要将视频的发布者和当前传入，才能正确获得isFollow，
 	//如果出现错误，不能直接返回失败，将默认值返回，保证稳定
 	go func() {
 		video.Author, err = videoService.GetUserByIdWithCurId(data.AuthorId, userId)

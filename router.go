@@ -22,13 +22,19 @@ func initRouter(r *gin.Engine) {
 	// 6.1 Gin 路由组监听拉取视频列表事件
 	apiRouter.GET("/feed/", jwt.AuthWithoutLogin(), controller.Feed)
 	// extra apis - I
-	// 7.1 Gin 路由组监听点赞视频事件
+	// 通过路由组来鉴权并调用FavoriteAction函数，实现点赞功能
 	apiRouter.POST("/favorite/action/", jwt.Auth(), controller.FavoriteAction)
+	// 通过路由组来鉴权并调用GetFavouriteList函数，实现获取点赞列表功能
 	apiRouter.GET("/favorite/list/", jwt.Auth(), controller.GetFavouriteList)
+	// 通过路由组来鉴权并调用CommentAction函数，实现评论功能
 	apiRouter.POST("/comment/action/", jwt.Auth(), controller.CommentAction)
+	// 通过路由组来鉴权并调用CommentList函数，实现拉取评论列表功能
 	apiRouter.GET("/comment/list/", jwt.AuthWithoutLogin(), controller.CommentList)
 	// extra apis - II
+	// 通过路由组来鉴权并调用RelationAction函数，实现关注功能
 	apiRouter.POST("/relation/action/", jwt.Auth(), controller.RelationAction)
+	// 通过路由组来鉴权并调用GetFollowing函数，获取当前用户的关注列表
 	apiRouter.GET("/relation/follow/list/", jwt.Auth(), controller.GetFollowing)
+	// 通过路由组来鉴权并调用GetFollowers函数，获取当前用户的粉丝列表
 	apiRouter.GET("/relation/follower/list", jwt.Auth(), controller.GetFollowers)
 }

@@ -82,7 +82,7 @@ func Login(c *gin.Context) {
 			Response: Response{StatusCode: 0},
 			UserId:   u.Id,
 			Token:    token,
-		})
+		}) 
 	} else {
 		c.JSON(http.StatusOK, UserLoginResponse{
 			Response: Response{StatusCode: 1, StatusMsg: "Username or Password Error"},

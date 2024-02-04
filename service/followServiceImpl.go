@@ -184,10 +184,12 @@ func updateRedisWithAdd(userId int64, targetId int64) (bool, error) {
 	// step1
 	targetIdStr := strconv.Itoa(int(targetId))
 	if cnt, _ := redis.RdbFollowers.SCard(redis.Ctx, targetIdStr).Result(); 0 != cnt {
+		// 将当前用户的ID添加到目标用户的粉丝列表中
 		redis.RdbFollowers.SAdd(redis.Ctx, targetIdStr, userId)
 		redis.RdbFollowers.Expire(redis.Ctx, targetIdStr, config.ExpireTime)
 	}
 	// step2
+	// 当前用户
 	followingUserIdStr := strconv.Itoa(int(userId))
 	if cnt, _ := redis.RdbFollowing.SCard(redis.Ctx, followingUserIdStr).Result(); 0 != cnt {
 		redis.RdbFollowing.SAdd(redis.Ctx, followingUserIdStr, targetId)

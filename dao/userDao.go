@@ -35,7 +35,7 @@ func GetTableUserByUsername(name string) (TableUser, error) {
 		return tableUser, err
 	}
 	return tableUser, nil
-}
+} 
 
 // GetTableUserById 根据user_id获得TableUser对象
 func GetTableUserById(id int64) (TableUser, error) {
