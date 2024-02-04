@@ -1,19 +1,15 @@
-- [🍻 项目流程](#-项目流程)
-	- [🥂 用户模块是怎么设计的?](#-用户模块是怎么设计的)
-	- [🥂 视频模块是怎么设计的?](#-视频模块是怎么设计的)
-	- [根据视频 ID 获取视频的点赞数量](#根据视频-id-获取视频的点赞数量)
-	- [点赞视频](#点赞视频)
-	- [获取关注列表](#获取关注列表)
-	- [获取粉丝列表](#获取粉丝列表)
-	- [关注用户](#关注用户)
+- [🍺 项目流程](#-项目流程)
+	- [🍻 用户模块是怎么设计的?](#-用户模块是怎么设计的)
+	- [🍻 视频模块是怎么设计的?](#-视频模块是怎么设计的)
+	- [🍻 点赞模块是怎么设计的?](#-点赞模块是怎么设计的)
 - [中间件](#中间件)
 	- [JWT 鉴权模块](#jwt-鉴权模块)
 	- [ffmpeg 截图模块](#ffmpeg-截图模块)
 	- [ftp 视频上传模块](#ftp-视频上传模块)
 - [相关博客](#相关博客)
 
-# 🍻 项目流程
-## 🥂 用户模块是怎么设计的?
+# 🍺 项目流程
+## 🍻 用户模块是怎么设计的?
 **需求分析**:
 
 用户模块主要包括用户注册, 用户登录, 获取用户信息三个部分.
@@ -139,7 +135,7 @@ c.JSON(http.StatusOK, UserResponse{
 
 🔸 数据库安全: 数据库存储用户密码时, 存储的是 sha256 加密后的密码, 避免密码明文传输.
 
-## 🥂 视频模块是怎么设计的?
+## 🍻 视频模块是怎么设计的?
 
 **需求分析**:
 
@@ -278,124 +274,162 @@ c.JSON(http.StatusOK, FeedResponse{
 
 🔸 在连接中, 将 ssh 和 ftp 连接均设置为长连接, 减少连接断开的情况发生.
 
-## 根据视频 ID 获取视频的点赞数量
+## 🍻 点赞模块是怎么设计的?
+
+**需求分析**:
+
+点赞模块包括点赞, 取消点赞, 获取点赞列表三个部分.
+
+**相关结构**:
+
 ```go
-favoriteCnt = VideoServer.FavouriteCount(tableVideo.ID)
-# 判断 Redis 中是否存在记录
-n = redis.RdbLikeVideoId.Exists(redis.Ctx, strVideoId).Result()
-# 如果 Redis 中存在， 则返回
-count = redis.RdbLikeVideoId.SCard(redis.Ctx, strVideoId).Result()
-# 如果 Redis 中不存在， 添加数据到缓存中
-redis.RdbLikeVideoId.Del(redis.Ctx, strVideoId)
-# 设置过期时间
-redis.RdbLikeVideoId.Expire(redis.Ctx, strVideoId, time.Duration(config.OneMonth)*time.Second).Result()
-# 根据 videoID 获取点赞的 userID
-userID[] = GetLikeUserIdList(videoId int64)
-Db.Model(Like{}).Where(map[string]interface{}{"video_id": videoId, "cancel": config.IsLike}).Pluck("user_id", &likeUserIdList)
-# 将相关信息写入缓存, 重新从缓存中读取数据
-redis.RdbLikeVideoId.SAdd(redis.Ctx, strVideoId, likeUserId)
-count = redis.RdbLikeVideoId.SCard(redis.Ctx, strVideoId).Result()
+// 点赞基本信息
+type Like struct {
+	Id      	int64 	// 自增 Id
+	UserId  	int64 	// 点赞方
+	VideoId 	int64 	// 被点赞视频
+	Cancel  	int8  	// 是否点赞，0为点赞，1为取消赞
+}
 ```
 
-## 点赞视频
+**点赞**:
+
 ```go
-// Gin 路由组监听点赞视频事件
+# 客户端向服务端发送点赞请求
 apiRouter.POST("/favorite/action/", jwt.Auth(), controller.FavoriteAction)
-// 解析 cur_id，video_id，action_type
-cur_id := c.GetString("user_id")
-video_id = c.Query("video_id")
-action_type = c.Query("action_type")
-// 进行点赞操作
-err := like.FavouriteAction(cur_id, video_id, int32(action_type))
-// 在 Redis 中查询有无记录
-n, err := redis.RdbLikeUserId.Exists(redis.Ctx, cur_id).Result()
-// 如果有，则更新缓存
-_, err1 := redis.RdbLikeUserId.SAdd(redis.Ctx, cur_id, video_id).Result()
-// 将数据库更新的操作放入消息队列
+# 服务端首先从请求中获取 token 进行解析, 如果解析正确, 则将 token 中的用户信息添加到上下文中
+auth := context.Query("token")
+token, err := parseToken(auth)
+context.Set("curId", token.Id)
+context.Next()
+# 从请求中获取当前用户 ID, 被点赞视频 ID, 点赞类型
+curId, _ := strconv.ParseInt(c.GetString("curId"), 10, 64)
+videoId, _ := strconv.ParseInt(c.Query("video_id"), 10, 64)
+actionType, _ := strconv.ParseInt(c.Query("action_type"), 10, 64)
+# 调用点赞动作
+lsi.FavouriteAction(curId, videoId, int32(actionType))
+# 先从 Redis 中查找有无当前用户的 key, 如果有则添加一个 videoId, 并将更新数据库操作放入消息队列中
+redis.RdbLikeUserId.Exists(redis.Ctx, curId).Result()
+redis.RdbLikeUserId.SAdd(redis.Ctx, curId, videoId).Result()
 rabbitmq.RmqLikeAdd.Publish(sb.String())
-// 如果没有，则更新缓存
-_, err := redis.RdbLikeUserId.SAdd(redis.Ctx, strUserId, config.DefaultRedisValue).Result()
-// 设置过期时间
-_, err := redis.RdbLikeUserId.Expire(redis.Ctx, strUserId, time.Duration(config.OneMonth)*time.Second).Result()
-// 根据 cur_id 获取点赞过的视频 ID 列表
+# 如果 Redis 中找不到, 则新建一个 key, 设置过期时间, 并添加初始值防止脏读
+redis.RdbLikeUserId.SAdd(redis.Ctx, curId, config.DefaultRedisValue).Result()
+redis.RdbLikeUserId.Expire(redis.Ctx, curId, time.Duration(config.OneMonth)*time.Second).Result()
+# 从数据库中读取点赞信息列表, 更新到 Redis 中, 在通过消息队列更新数据库
+videoIdList, err1 := dao.GetLikeVideoIdList(curId)
+for likeVideoId := range videoIdList {
+	redis.RdbLikeUserId.SAdd(redis.Ctx, userId, likeVideoId).Result(); err1 != nil
+}
+redis.RdbLikeUserId.SAdd(redis.Ctx, curId, videoId).Result()
+rabbitmq.RmqLikeAdd.Publish(sb.String())
+# 同时更新视频被那些用户点赞的 Redis 和 Mysql 数据, 流程和上述一样
+# 不过这里不用消息队列, 因为 Redis 中的 RdbLikeUserId 和 RdbLikeVideoId 对应的是一张 Like 表
+redis.RdbLikeVideoId.Exists(redis.Ctx, VideoId).Result()
+redis.RdbLikeVideoId.SAdd(redis.Ctx, VideoId, curId).Result()
+...
+# 返回响应给客户端
+c.JSON(http.StatusOK, likeResponse{
+	StatusCode: 0,
+	StatusMsg:  "favourite action success",
+})
+```
+
+**取消点赞**:
+
+```go
+# 客户端向服务端发送取消点赞请求
+apiRouter.POST("/favorite/action/", jwt.Auth(), controller.FavoriteAction)
+# 服务端首先从请求中获取 token 进行解析, 如果解析正确, 则将 token 中的用户信息添加到上下文中
+auth := context.Query("token")
+token, err := parseToken(auth)
+context.Set("curId", token.Id)
+context.Next()
+# 从请求中获取当前用户 ID, 被点赞视频 ID, 点赞类型
+curId, _ := strconv.ParseInt(c.GetString("curId"), 10, 64)
+videoId, _ := strconv.ParseInt(c.Query("video_id"), 10, 64)
+actionType, _ := strconv.ParseInt(c.Query("action_type"), 10, 64)
+# 调用点赞动作
+lsi.FavouriteAction(curId, videoId, int32(actionType))
+# 先从 Redis 中查找有无当前用户的 key, 如果有则删除 videoId, 并将更新数据库操作放入消息队列中
+redis.RdbLikeUserId.Exists(redis.Ctx, curId).Result()
+redis.RdbLikeUserId.SRem(redis.Ctx, curId, videoId).Result()
+rabbitmq.RmqLikeDel.Publish(sb.String())
+# 如果 Redis 中找不到, 则新建一个 key, 设置过期时间, 并添加初始值防止脏读
+redis.RdbLikeUserId.SAdd(redis.Ctx, curId, config.DefaultRedisValue).Result()
+redis.RdbLikeUserId.Expire(redis.Ctx, curId, time.Duration(config.OneMonth)*time.Second).Result()
+# 从数据库中读取点赞信息列表, 更新到 Redis 中, 在通过消息队列更新数据库
+videoIdList, err1 := dao.GetLikeVideoIdList(curId)
+for likeVideoId := range videoIdList {
+	redis.RdbLikeUserId.SAdd(redis.Ctx, userId, likeVideoId).Result(); err1 != nil
+}
+redis.RdbLikeUserId.SRem(redis.Ctx, curId, videoId).Result()
+redis.RdbLikeUserId.Del(redis.Ctx, curId)
+# 同时更新视频被那些用户点赞的 Redis 和 Mysql 数据, 流程和上述一样
+# 不过这里不用消息队列, 因为 Redis 中的 RdbLikeUserId 和 RdbLikeVideoId 对应的是一张 Like 表
+redis.RdbLikeVideoId.Exists(redis.Ctx, VideoId).Result()
+redis.RdbLikeVideoId.SRem(redis.Ctx, VideoId, curId).Result()
+...
+# 返回响应给客户端
+c.JSON(http.StatusOK, likeResponse{
+	StatusCode: 0,
+	StatusMsg:  "favourite action success",
+})
+```
+
+**获取点赞列表**:
+
+```go
+# 客户端向服务端发送获取点赞列表请求
+apiRouter.GET("/favorite/list/", jwt.Auth(), controller.GetFavouriteList)
+# 服务端首先从请求中获取 token 进行解析, 如果解析正确, 则将 token 中的用户信息添加到上下文中
+auth := context.Query("token")
+token, err := parseToken(auth)
+context.Set("curId", token.Id)
+context.Next()
+# 从请求中获取当前用户 ID, 目标用户 ID
+curId, _ := strconv.ParseInt(c.GetString("curId"), 10, 64)
+userId, _ := strconv.ParseInt(c.GetQuery("userId"), 10, 64)
+# 通过目标用户 ID 获取他点赞过的视频列表
+videos, err := lsi.GetFavouriteList(userId, curId)
+# 首先从 Redis 中查询有无 key 为 userId, 如果有则获取相应的 videoIdList
+redis.RdbLikeUserId.Exists(redis.Ctx, strUserId).Result()
+videoIdList, err1 := redis.RdbLikeUserId.SMembers(redis.Ctx, strUserId).Result()
+# 通过 videoId 来获取视频基本信息, 再通过基本信息来获取视频详细信息
+go lsi.addFavouriteVideoList(videoId, curId, favoriteVideoList, &wg)
+tableVideo, err := like.GetVideo(videoId, curId)
+video, err := dao.GetVideoByVideoId(videoId)
+videoService.creatVideo(&video, &temp, userId)
+wg.Add(4)
+go func() {video.Author, err = vsi.GetUserByIdWithCurId(data.AuthorId, userId), wg.Done()}()
+go func() {video.FavoriteCount, err = vsi.FavouriteCount(data.Id), wg.Done()}()
+go func() {video.CommentCount, err = vsi.CountFromVideoId(data.Id), wg.Done()}()
+go func() {video.IsFavorite, err = vsi.IsFavourite(video.Id, userId)), wg.Done()}()
+wg.Wait()
+# 如果 Redis 中没有相关记录, 则从 Mysql 中查询并更新到 Redis
+redis.RdbLikeUserId.SAdd(redis.Ctx, strUserId, config.DefaultRedisValue).Result()
+redis.RdbLikeUserId.Expire(redis.Ctx, strUserId, time.Duration(config.OneMonth)*time.Second).Result()
 videoIdList, err1 := dao.GetLikeVideoIdList(userId)
-// 将 key-value 信息更新到缓存
-_, err1 := redis.RdbLikeUserId.SAdd(redis.Ctx, strUserId, likeVideoId).Result()
-// 将数据库更新的操作放入消息队列
-```
-
-## 获取关注列表
-```go
-// 通过路由组来鉴权并调用GetFollowing函数，获取当前用户的关注列表
-apiRouter.GET("/relation/follow/list/", jwt.Auth(), controller.GetFollowing)
-// 解析上下文中的登录的userId
-userId, err := strconv.ParseInt(c.Query("user_id"), 10, 64)
-// 获取关注列表
-users, err := fsi.GetFollowing(userId)
-err := dao.Db.Raw(..., userId).Scan(&users)
-// 输出关注列表信息
-c.JSON(http.StatusOK, FollowingResp{
-    UserList: users,
-    Response: Response{
-        StatusCode: 0,
-        StatusMsg:  "OK",
-    },
+redis.RdbLikeUserId.SAdd(redis.Ctx, strUserId, likeVideoId).Result()
+# 通过 videoId 来获取视频基本信息, 再通过基本信息来获取视频详细信息
+go lsi.addFavouriteVideoList(videoId, curId, favoriteVideoList, &wg)
+...
+# 返回响应给客户端
+c.JSON(http.StatusOK, GetFavouriteListResponse{
+	StatusCode: 0,
+	StatusMsg:  "get favouriteList success",
+	VideoList:  videos,
 })
 ```
 
-## 获取粉丝列表
-```go
-// 通过路由组来鉴权并调用GetFollowers函数，获取当前用户的粉丝列表
-apiRouter.GET("/relation/follower/list", jwt.Auth(), controller.GetFollowers)
-// 解析上下文中的登录的userId
-userId, err := strconv.ParseInt(c.Query("user_id"), 10, 64)
-// 获取粉丝列表
-users, err := fsi.GetFollowers(userId)
-err := dao.Db.Raw(..., userId).Scan(&users)
-// 输出粉丝列表信息
-c.JSON(http.StatusOK, FollowersResp{
-    Response: Response{
-        StatusCode: 0,
-        StatusMsg:  "OK",
-    },
-    UserList: users,
-})
-```
+**优化设计**：
 
-## 关注用户
-```go
-// 通过路由组来鉴权并调用RelationAction函数，实现关注功能
-apiRouter.POST("/relation/action/", jwt.Auth(), controller.RelationAction)
-// 获取当前用户和目标用户的ID，以及是进行关注还是取关
-userId, err1 := strconv.ParseInt(c.GetString("userId"), 10, 64)
-toUserId, err2 := strconv.ParseInt(c.Query("to_user_id"), 10, 64)
-actionType, err3 := strconv.ParseInt(c.Query("action_type"), 10, 64)
-// 进行关注
-go fsi.AddFollowRelation(userId, toUserId)
-// 将当前用户，目标用户ID字符串添加到消息队列，后台从中取元素写入数据库
-rabbitmq.RmqFollowAdd.Publish(sb.String())
-rabbitmq.InitFollowRabbitMQ()
-go RmqFollowAdd.Consumer()
-go f.consumerFollowAdd(msgs)
-err := dao.Db.Raw(sql).Scan(nil)
-// 更新 redis 中的数据
-updateRedisWithAdd(userId, targetId)
-// 将curId添加入targetId的粉丝列表，设置过期时间
-redis.RdbFollowers.SAdd(redis.Ctx, targetIdStr, userId)
-redis.RdbFollowers.Expire(redis.Ctx, targetIdStr, config.ExpireTime)
-// 将targetID加入到curId的关注列表，设置过期时间
-redis.RdbFollowing.SAdd(redis.Ctx, followingUserIdStr, targetId)
-redis.RdbFollowing.Expire(redis.Ctx, followingUserIdStr, config.ExpireTime)
-// 关注成功
-c.JSON(http.StatusOK, RelationActionResp{
-    Response{
-        StatusCode: 0,
-        StatusMsg:  "OK",
-    },
-})
-```
+🔸 当服务器直接与 Mysql 进行交互时, 客户端的响应时间较慢, 为了减少响应时间而使用了具有高性能的 Redis 缓存. 当用户在刷视频时, 最常用到的功能是点赞, 取消赞功能, 当用户进行相关操作时, 直接从 Redis 中获取数据进行响应 ，提高用户操作的流畅度.
 
+🔸 当大量用户同时向服务器发出请求时, 如果直接对数据库进行处理, 那么数据库压力过大可能会导致宕机. 因此在项目中采用 rabbitMQ 作为消息队列, 当需要对数据库进行操作时, 将操作放入消息队列中, 由服务器从消息队列中取消息, 不断地进行处理.
 
+🔸 在 Redis 中 key 的初始化时, 会为 key 添加一个默认值, 并设置一个过期时间, 那么就算之后点赞列表为空, key 也不会被删除, 只会通过过期策略来删除. 当进行点赞 / 取消点赞等操作时, 会先对 Redis 中的数据进行更新, 数据库中的数据通过消息队列来更新. 当其他用户查询这个 key 时, 会直接从 Redis 里查询, 避免了从数据库更新过慢导致的脏读现象.
+
+🔸 当获取点赞视频列表时, 最初是向 Mysql 中查找符合条件的 videoID, 再获取获取一个完整的 video 对象, 涉及到多张表的查询, 响应速度很慢. 现在是从 Redis 中获取符合条件的 videoId, 再通过协程的方式并发获取 video 信息, 提高了响应速度.
 
 
 
@@ -465,5 +499,7 @@ go keepAlive()
 
 # 相关博客
 [JWT token](https://www.ruanyifeng.com/blog/2018/07/json_web_token-tutorial.html)
+
 [Nginx](https://juejin.cn/post/6844904129987526663)
+
 [正向代理 / 反向代理](https://juejin.cn/post/6844904129987526663)

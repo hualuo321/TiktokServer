@@ -127,7 +127,7 @@ func (like *LikeServiceImpl) FavouriteCount(videoId int64) (int64, error) {
 		}
 		//给键值设置有效期，类似于gc机制
 		_, err := redis.RdbLikeVideoId.Expire(redis.Ctx, strVideoId,
-			time.Duration(config.OneMonth)*time.Second).Result()
+			time.Duration(config.OneMonth)*time.Second).Result() 
 		if err != nil {
 			log.Printf("方法:FavouriteCount RedisLikeVideoId 设置有效期失败")
 			redis.RdbLikeVideoId.Del(redis.Ctx, strVideoId)

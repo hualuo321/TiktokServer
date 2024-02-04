@@ -19,6 +19,7 @@ type GetFavouriteListResponse struct {
 	VideoList  []service.Video `json:"video_list,omitempty"`
 }
 
+
 // FavoriteAction 点赞或者取消赞操作;
 func FavoriteAction(c *gin.Context) {
 	strUserId := c.GetString("userId")
